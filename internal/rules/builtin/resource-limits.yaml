@@ -1,0 +1,46 @@
+id: resource-requests
+description: "All containers must specify CPU and memory requests"
+severity: warning
+match:
+  kinds: [Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob]
+expression: |
+  (
+    !has(resource.spec.containers) ||
+    (
+      resource.spec.containers.all(c,
+        has(c.resources) && has(c.resources.requests) &&
+        has(c.resources.requests.cpu) && has(c.resources.requests.memory)) &&
+      (!has(resource.spec.initContainers) ||
+       resource.spec.initContainers == null ||
+       resource.spec.initContainers.all(c,
+         has(c.resources) && has(c.resources.requests) &&
+         has(c.resources.requests.cpu) && has(c.resources.requests.memory)))
+    )
+  ) &&
+  (
+    !has(resource.spec.template) ||
+    (
+      resource.spec.template.spec.containers.all(c,
+        has(c.resources) && has(c.resources.requests) &&
+        has(c.resources.requests.cpu) && has(c.resources.requests.memory)) &&
+      (!has(resource.spec.template.spec.initContainers) ||
+       resource.spec.template.spec.initContainers == null ||
+       resource.spec.template.spec.initContainers.all(c,
+         has(c.resources) && has(c.resources.requests) &&
+         has(c.resources.requests.cpu) && has(c.resources.requests.memory)))
+    )
+  ) &&
+  (
+    !has(resource.spec.jobTemplate) ||
+    (
+      resource.spec.jobTemplate.spec.template.spec.containers.all(c,
+        has(c.resources) && has(c.resources.requests) &&
+        has(c.resources.requests.cpu) && has(c.resources.requests.memory)) &&
+      (!has(resource.spec.jobTemplate.spec.template.spec.initContainers) ||
+       resource.spec.jobTemplate.spec.template.spec.initContainers == null ||
+       resource.spec.jobTemplate.spec.template.spec.initContainers.all(c,
+         has(c.resources) && has(c.resources.requests) &&
+         has(c.resources.requests.cpu) && has(c.resources.requests.memory)))
+    )
+  )
+message: "One or more containers are missing resource requests"

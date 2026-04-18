@@ -1,0 +1,34 @@
+id: no-latest-tag
+description: "Container images must not use the :latest tag"
+severity: error
+match:
+  kinds: [Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob]
+expression: |
+  (
+    !has(resource.spec.containers) ||
+    (
+      resource.spec.containers.all(c, imageTag(c.image) != "latest") &&
+      (!has(resource.spec.initContainers) ||
+       resource.spec.initContainers == null ||
+       resource.spec.initContainers.all(c, imageTag(c.image) != "latest"))
+    )
+  ) &&
+  (
+    !has(resource.spec.template) ||
+    (
+      resource.spec.template.spec.containers.all(c, imageTag(c.image) != "latest") &&
+      (!has(resource.spec.template.spec.initContainers) ||
+       resource.spec.template.spec.initContainers == null ||
+       resource.spec.template.spec.initContainers.all(c, imageTag(c.image) != "latest"))
+    )
+  ) &&
+  (
+    !has(resource.spec.jobTemplate) ||
+    (
+      resource.spec.jobTemplate.spec.template.spec.containers.all(c, imageTag(c.image) != "latest") &&
+      (!has(resource.spec.jobTemplate.spec.template.spec.initContainers) ||
+       resource.spec.jobTemplate.spec.template.spec.initContainers == null ||
+       resource.spec.jobTemplate.spec.template.spec.initContainers.all(c, imageTag(c.image) != "latest"))
+    )
+  )
+message: "One or more containers use the :latest image tag"

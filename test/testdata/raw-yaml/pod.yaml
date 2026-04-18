@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: pod
+  name: pod-7dfd9956bf-9trlb
+  namespace: pod
+spec:
+  containers:
+    - image: some-pod:latest
+      name: some-pod
