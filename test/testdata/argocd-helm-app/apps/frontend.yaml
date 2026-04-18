@@ -1,0 +1,17 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: frontend
+  namespace: argocd
+spec:
+  source:
+    repoURL: "."
+    path: charts/frontend
+    helm:
+      releaseName: frontend
+      valueFiles:
+        - values.yaml
+  destination:
+    namespace: production
+    server: https://kubernetes.default.svc
+  project: default
