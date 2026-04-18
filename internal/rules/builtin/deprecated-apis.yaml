@@ -1,0 +1,15 @@
+id: deprecated-apis
+description: "Resources must not use deprecated or removed API versions"
+severity: error
+expression: >
+  !(apiVersion in [
+    "extensions/v1beta1",
+    "apps/v1beta1",
+    "apps/v1beta2",
+    "networking.k8s.io/v1beta1",
+    "rbac.authorization.k8s.io/v1alpha1",
+    "rbac.authorization.k8s.io/v1beta1",
+    "storage.k8s.io/v1beta1",
+    "policy/v1beta1"
+  ])
+message: "apiVersion {{ .apiVersion }} is deprecated or removed"
