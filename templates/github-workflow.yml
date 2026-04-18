@@ -1,0 +1,23 @@
+# .github/workflows/glint.yml
+# Copy this file into your GitOps repository to lint with glint on every push and PR.
+name: GitOps Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # required for SARIF upload to Security tab
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: lukashankeln/glint@v1
+        with:
+          fail-on: "error"
+          upload-sarif: "true"
