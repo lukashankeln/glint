@@ -1,0 +1,6 @@
+replicaCount: 1
+
+image:
+  repository: myapp/backend
+  tag: "2.0.0"
+  pullPolicy: IfNotPresent

@@ -1,0 +1,13 @@
+id: resource-requests
+description: "All containers must specify CPU and memory requests"
+severity: warning
+match:
+  kinds: [Deployment, StatefulSet, DaemonSet, Pod]
+expression: >
+  resource.spec.template.spec.containers.all(c,
+    has(c.resources) &&
+    has(c.resources.requests) &&
+    has(c.resources.requests.cpu) &&
+    has(c.resources.requests.memory)
+  )
+message: "One or more containers are missing resource requests"

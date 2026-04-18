@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: microservices
+  namespace: argocd
+spec:
+  generators:
+    - list:
+        elements:
+          - app: frontend
+          - app: backend
+  template:
+    metadata:
+      name: '{{app}}'
+    spec:
+      source:
+        repoURL: '.'
+        path: 'charts/{{app}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: production
+      project: default

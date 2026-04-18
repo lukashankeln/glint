@@ -1,0 +1,43 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: postgres-postgres
+  namespace: argocd
+  finalizers:
+    - resources-finalizers.argocd.argoproj.io
+spec:
+  project: mogenius
+  revisionHistoryLimit: 1
+  destination:
+    name: in-cluster
+    namespace: postgres
+  syncPolicy:
+    automated:
+      prune: true
+      allowEmpty: true
+  source:
+    repoURL: ghcr.io/cloudpirates-io/helm-charts
+    targetRevision: 0.19.3
+    chart: postgres
+    helm:
+      valuesObject:
+        auth:
+          existingSecret: postgres-secret
+          secretKeys:
+            adminPasswordKey: postgres-password
+        customUser:
+          existingSecret: postgres-secret
+          secretKeys:
+            name: CUSTOM_USER
+            database: CUSTOM_DB
+            password: CUSTOM_PASSWORD
+        persistence:
+          enabled: true
+          size: 5Gi
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
