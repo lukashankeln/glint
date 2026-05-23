@@ -17,10 +17,12 @@ import (
 	celenv "github.com/lukashankeln/glint/internal/rules/cel"
 )
 
-// CompiledRule pairs a RuleDef with its compiled CEL program.
+// CompiledRule pairs a RuleDef with its compiled CEL program and pre-parsed
+// message template so we don't re-parse it on every violation.
 type CompiledRule struct {
 	Def     RuleDef
 	program cel.Program
+	msgTmpl *template.Template // nil when Def.Message is empty or unparseable
 }
 
 // Engine evaluates policy rules against manifests using CEL.
@@ -76,7 +78,13 @@ func NewEngine(cfg config.RulesConfig) (*Engine, error) {
 		if err != nil {
 			return nil, fmt.Errorf("rule %q: CEL program error: %w", def.ID, err)
 		}
-		compiled = append(compiled, CompiledRule{Def: def, program: prog})
+		var msgTmpl *template.Template
+		if def.Message != "" {
+			if t, err := template.New("msg").Parse(def.Message); err == nil {
+				msgTmpl = t
+			}
+		}
+		compiled = append(compiled, CompiledRule{Def: def, program: prog, msgTmpl: msgTmpl})
 	}
 
 	for _, exc := range cfg.Exceptions {
@@ -188,7 +196,7 @@ func (e *Engine) evaluateManifest(m manifest.Manifest) []Violation {
 			continue // rule passes, no violation
 		}
 
-		msg := renderMessage(rule.Def.Message, m)
+		msg := renderMessage(rule.msgTmpl, rule.Def.Message, m)
 		violations = append(violations, Violation{
 			RuleID:       rule.Def.ID,
 			Severity:     rule.Def.Severity,
@@ -205,24 +213,20 @@ func (e *Engine) evaluateManifest(m manifest.Manifest) []Violation {
 	return violations
 }
 
-// renderMessage renders the violation message template with manifest fields.
-// Falls back to the raw message string on template errors.
-func renderMessage(tmpl string, m manifest.Manifest) string {
-	if tmpl == "" {
-		return ""
-	}
-	t, err := template.New("msg").Parse(tmpl)
-	if err != nil {
-		return tmpl
+// renderMessage executes the pre-compiled message template with manifest fields.
+// Falls back to the raw message string on execution errors.
+func renderMessage(tmpl *template.Template, fallback string, m manifest.Manifest) string {
+	if tmpl == nil {
+		return fallback
 	}
 	var buf bytes.Buffer
-	if err := t.Execute(&buf, map[string]string{
+	if err := tmpl.Execute(&buf, map[string]string{
 		"kind":       m.Kind,
 		"name":       m.Name,
 		"namespace":  m.Namespace,
 		"apiVersion": m.APIVersion,
 	}); err != nil {
-		return tmpl
+		return fallback
 	}
 	return buf.String()
 }
