@@ -90,7 +90,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - uses: lukashankeln/glint@v1
+      - uses: lukashankeln/glint@v0.1.2
         with:
           fail-on: "error"
           upload-sarif: "true"
