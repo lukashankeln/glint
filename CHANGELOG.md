@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.7](https://github.com/lukashankeln/glint/compare/v0.1.6...v0.1.7) (2026-05-23)
+
+
+### Bug Fixes
+
+* add explicit cache save and restore steps ([cf21abe](https://github.com/lukashankeln/glint/commit/cf21abe9fe979ff229910cc6f1a5202455f2c05c))
+* another try of fixing the caching of the installed version ([9e3f443](https://github.com/lukashankeln/glint/commit/9e3f4431f51aa35145ec952b46dd3de6cb2771a6))
+
 ## [0.1.6](https://github.com/lukashankeln/glint/compare/v0.1.5...v0.1.6) (2026-05-23)
 
 

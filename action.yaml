@@ -5,7 +5,7 @@ inputs:
   version:
     description: glint version to install (e.g. v0.2.0)
     required: false
-    default: 0.1.6
+    default: 0.1.7
   go-version:
     description: 'Go toolchain version used to compile glint (default: matches go.mod)'
     required: false
@@ -50,14 +50,12 @@ runs:
       uses: actions/setup-go@v5
       with:
         go-version: ${{ inputs.go-version }}
-
     - name: Cache glint binary
       id: cache-glint
       uses: actions/cache@v4
       with:
         path: ~/go/bin/glint
         key: glint-${{ inputs.version }}-${{ runner.os }}-${{ runner.arch }}
-
     - name: Install glint
       if: steps.cache-glint.outputs.cache-hit != 'true'
       shell: bash
@@ -73,7 +71,6 @@ runs:
         ;
 
         echo "Installed: $(~/go/bin/glint version)"
-
     - name: Run glint
       id: lint
       shell: bash
