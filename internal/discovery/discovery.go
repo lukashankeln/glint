@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v3"
@@ -19,6 +22,23 @@ import (
 type minimalDoc struct {
 	APIVersion string `yaml:"apiVersion"`
 	Kind       string `yaml:"kind"`
+}
+
+// fileResult holds everything extracted from a single YAML file during the
+// parallel processing phase.
+type fileResult struct {
+	apps            []DiscoveredApp
+	helmRepos       map[string]string // namespace/name -> url
+	pendingReleases []pendingRelease
+	rawDir          string
+}
+
+// pendingRelease holds a raw Flux HelmRelease document whose sourceRef cannot
+// be resolved until all HelmRepository objects across all files are known.
+type pendingRelease struct {
+	raw        []byte
+	repoRoot   string
+	sourceFile string
 }
 
 // Discover walks the given paths and returns all discoverable apps.
@@ -40,19 +60,14 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 			return nil, err
 		}
 
-		// Find the repository root (used to resolve relative paths in CRDs).
 		repoRoot := findRepoRoot(abs)
-
-		// Apply config overrides keyed by path.
 		overrideMap := buildOverrideMap(cfg, repoRoot)
 
-		// Pre-scan: collect all HelmRepository objects for two-pass resolution.
-		helmRepos := collectHelmRepositories(ctx, abs, cfg)
-
-		// Track directories that contain plain .yaml files (candidates for raw apps).
-		rawDirs := map[string]bool{}
-
-		// skipDirs tracks directories we should not recurse into (e.g. Helm chart dirs).
+		// Phase 1: Walk the directory tree.
+		// Directory-level detection (Helm charts, Kustomize overlays) must remain
+		// synchronous so we can return filepath.SkipDir at the right moments.
+		// YAML file paths are just collected here for parallel processing below.
+		var yamlFiles []string
 		skipDirs := map[string]bool{}
 
 		err = filepath.WalkDir(abs, func(path string, d fs.DirEntry, err error) error {
@@ -60,12 +75,10 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 				log.Warn().Err(err).Str("path", path).Msg("skipping unreadable path")
 				return nil
 			}
-
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
 
-			// Check if any parent was marked as skip.
 			for skip := range skipDirs {
 				if strings.HasPrefix(path, skip+string(filepath.Separator)) {
 					return nil
@@ -73,15 +86,12 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 			}
 
 			if d.IsDir() {
-				// Skip hidden directories and excluded patterns.
 				if strings.HasPrefix(d.Name(), ".") && path != abs {
 					return filepath.SkipDir
 				}
 				if isExcluded(path, cfg.Discovery.Exclude) {
 					return filepath.SkipDir
 				}
-
-				// Helm chart — don't recurse further (subcharts handled by Helm).
 				if isHelmChart(path) {
 					app := buildHelmApp(path, overrideMap)
 					if !seen[app.RootPath] {
@@ -91,21 +101,16 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 					skipDirs[path] = true
 					return filepath.SkipDir
 				}
-
-				// Kustomize overlay — add, but keep recursing for nested overlays.
 				if isKustomizeOverlay(path) {
 					app := buildKustomizeApp(path, overrideMap)
 					if !seen[app.RootPath] {
 						seen[app.RootPath] = true
 						apps = append(apps, app)
 					}
-					// Don't return SkipDir — overlays can be nested.
 				}
-
 				return nil
 			}
 
-			// Only process .yaml / .yml files.
 			if !isYAMLFile(d.Name()) {
 				return nil
 			}
@@ -113,33 +118,63 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 				return nil
 			}
 			filesScanned++
-
-			dir := filepath.Dir(path)
-
-			// Parse the file and inspect each document.
-			_, err = processYAMLFile(path, repoRoot, helmRepos, &apps, seen)
-			if err != nil {
-				log.Warn().Err(err).Str("file", path).Msg("skipping file with parse errors")
-				return nil
-			}
-
-			// Mark the directory as a raw candidate regardless of whether it
-			// contained GitOps CRDs. The seen-check below filters out dirs
-			// already claimed as a Helm chart or Kustomize overlay root.
-			// This ensures ArgoCD Application / Flux HelmRelease files are
-			// themselves linted by CEL rules, not just the charts they reference.
-			rawDirs[dir] = true
-
+			yamlFiles = append(yamlFiles, path)
 			return nil
 		})
 		if err != nil {
 			return nil, err
 		}
 
-		// Add raw YAML apps for directories that had plain manifests and weren't
-		// already claimed as a Helm chart or Kustomize overlay.
-		for dir := range rawDirs {
-			if !seen[dir] {
+		// Phase 2: Parse all YAML files concurrently.
+		fileResults := parseFilesParallel(ctx, yamlFiles, repoRoot)
+
+		// Phase 3: Build the complete HelmRepository map from all parsed files.
+		helmRepos := make(map[string]string)
+		for i := range fileResults {
+			maps.Copy(helmRepos, fileResults[i].helmRepos)
+		}
+
+		// Phase 4: Merge results into the app list.
+		for i := range fileResults {
+			fr := &fileResults[i]
+
+			for _, app := range fr.apps {
+				dedupKey := app.RootPath
+				if dedupKey == "" {
+					dedupKey = app.RepoURL + "/" + app.ChartName + "@" + app.Name
+				}
+				if !seen[dedupKey] {
+					seen[dedupKey] = true
+					apps = append(apps, app)
+				}
+			}
+
+			// Resolve Flux HelmReleases now that the full helmRepos map is available.
+			for _, pr := range fr.pendingReleases {
+				app, err := parseFluxHelmRelease(pr.raw, pr.repoRoot, pr.sourceFile, helmRepos)
+				if err != nil {
+					log.Warn().Err(err).Str("file", pr.sourceFile).Msg("failed to parse Flux HelmRelease")
+					continue
+				}
+				if app == nil {
+					log.Debug().Str("file", pr.sourceFile).Msg("skipping Flux HelmRelease with unresolvable chart")
+					continue
+				}
+				dedupKey := app.RootPath
+				if dedupKey == "" {
+					dedupKey = app.RepoURL + "/" + app.ChartName + "@" + app.Name
+				}
+				if !seen[dedupKey] {
+					seen[dedupKey] = true
+					apps = append(apps, *app)
+				}
+			}
+		}
+
+		// Phase 5: Add raw YAML apps for directories that had plain manifests
+		// and weren't already claimed as a Helm chart or Kustomize overlay.
+		for i := range fileResults {
+			if dir := fileResults[i].rawDir; dir != "" && !seen[dir] {
 				seen[dir] = true
 				apps = append(apps, buildRawApp(dir, overrideMap))
 			}
@@ -150,81 +185,71 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 	return apps, nil
 }
 
-// collectHelmRepositories does a pre-scan walk to collect all Flux HelmRepository
-// objects, returning a map of "namespace/name" -> url.
-func collectHelmRepositories(ctx context.Context, root string, cfg *config.Config) map[string]string {
-	repos := make(map[string]string)
-	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || ctx.Err() != nil {
-			return nil
-		}
-		if d.IsDir() {
-			if strings.HasPrefix(d.Name(), ".") && path != root {
-				return filepath.SkipDir
-			}
-			if isExcluded(path, cfg.Discovery.Exclude) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !isYAMLFile(d.Name()) || isExcluded(path, cfg.Discovery.Exclude) {
-			return nil
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return nil
-		}
-		dec := yaml.NewDecoder(bytes.NewReader(data))
-		for {
-			var node yaml.Node
-			if err := dec.Decode(&node); err != nil {
-				break
-			}
-			if node.Kind == 0 {
-				continue
-			}
-			docBytes, err := yaml.Marshal(&node)
-			if err != nil {
-				continue
-			}
-			var md minimalDoc
-			if err := yaml.Unmarshal(docBytes, &md); err != nil {
-				continue
-			}
-			if strings.ToLower(md.Kind) == "helmrepository" {
-				key, url, err := parseFluxHelmRepository(docBytes)
-				if err != nil || key == "" {
-					continue
-				}
-				repos[key] = url
-			}
-		}
+// parseFilesParallel reads and parses all YAML files concurrently using a
+// worker pool and returns results in file order.
+func parseFilesParallel(ctx context.Context, files []string, repoRoot string) []fileResult {
+	if len(files) == 0 {
 		return nil
-	})
-	return repos
-}
-
-// processYAMLFile parses a YAML file and extracts any ArgoCD/Flux CRDs from it.
-// Returns true if at least one CRD document was found.
-func processYAMLFile(path, repoRoot string, helmRepos map[string]string, apps *[]DiscoveredApp, seen map[string]bool) (bool, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return false, err
 	}
 
-	crdFound := false
-	dec := yaml.NewDecoder(bytes.NewReader(data))
+	results := make([]fileResult, len(files))
+	workers := min(runtime.NumCPU(), len(files))
 
+	type job struct {
+		idx  int
+		path string
+	}
+
+	jobs := make(chan job, len(files))
+	var wg sync.WaitGroup
+
+	for range workers {
+		wg.Go(func() {
+			for j := range jobs {
+				results[j.idx] = parseFile(ctx, j.path, repoRoot)
+			}
+		})
+	}
+
+	for i, f := range files {
+		jobs <- job{idx: i, path: f}
+	}
+	close(jobs)
+	wg.Wait()
+
+	return results
+}
+
+// parseFile reads a single YAML file and extracts all GitOps CRDs from it.
+// HelmRelease documents are returned as pendingReleases because their sourceRef
+// resolution requires the complete HelmRepository map, which is only available
+// after all files have been processed.
+func parseFile(ctx context.Context, path, repoRoot string) fileResult {
+	if ctx.Err() != nil {
+		return fileResult{}
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		log.Warn().Err(err).Str("file", path).Msg("skipping file with parse errors")
+		return fileResult{}
+	}
+
+	var result fileResult
+	// Always mark the directory as a raw candidate so CRD files themselves get
+	// linted, not just the charts they reference.
+	result.rawDir = filepath.Dir(path)
+
+	dec := yaml.NewDecoder(bytes.NewReader(data))
 	for {
 		var node yaml.Node
 		if err := dec.Decode(&node); err != nil {
-			break // EOF or parse error — stop iterating
+			break
 		}
 		if node.Kind == 0 {
 			continue
 		}
 
-		// Re-encode the single document for targeted parsing.
 		docBytes, err := yaml.Marshal(&node)
 		if err != nil {
 			continue
@@ -243,11 +268,8 @@ func processYAMLFile(path, repoRoot string, helmRepos map[string]string, apps *[
 		switch framework {
 		case FrameworkArgoCD:
 			if strings.ToLower(md.Kind) == "applicationset" {
-				// ApplicationSets are generator controllers, not renderable apps.
-				// Skip creating a DiscoveredApp; the directory will be picked up as raw YAML
 				continue
 			}
-			crdFound = true
 			app, err := parseArgoCDApplication(docBytes, repoRoot, path)
 			if err != nil {
 				log.Warn().Err(err).Str("file", path).Msg("failed to parse ArgoCD Application")
@@ -257,42 +279,27 @@ func processYAMLFile(path, repoRoot string, helmRepos map[string]string, apps *[
 				log.Debug().Str("file", path).Msg("skipping ArgoCD Application with remote repoURL")
 				continue
 			}
-			// Use RepoURL+ChartName as dedup key for remote Helm charts.
-			dedupKey := app.RootPath
-			if dedupKey == "" {
-				dedupKey = app.RepoURL + "/" + app.ChartName + "@" + app.Name
-			}
-			if !seen[dedupKey] {
-				seen[dedupKey] = true
-				*apps = append(*apps, *app)
-			}
+			result.apps = append(result.apps, *app)
 
 		case FrameworkFlux:
-			crdFound = true
 			kind := strings.ToLower(md.Kind)
 			switch kind {
 			case "helmrepository":
-				// Already collected in pre-scan; skip here to avoid treating as raw CRD.
+				key, url, err := parseFluxHelmRepository(docBytes)
+				if err != nil || key == "" {
+					continue
+				}
+				if result.helmRepos == nil {
+					result.helmRepos = make(map[string]string)
+				}
+				result.helmRepos[key] = url
 
 			case "helmrelease":
-				app, err := parseFluxHelmRelease(docBytes, repoRoot, path, helmRepos)
-				if err != nil {
-					log.Warn().Err(err).Str("file", path).Msg("failed to parse Flux HelmRelease")
-					continue
-				}
-				if app == nil {
-					log.Debug().Str("file", path).Msg("skipping Flux HelmRelease with unresolvable chart")
-					continue
-				}
-				// Use RepoURL as dedup key for remote charts (RootPath is empty).
-				dedupKey := app.RootPath
-				if dedupKey == "" {
-					dedupKey = app.RepoURL + "/" + app.ChartName + "@" + app.Name
-				}
-				if !seen[dedupKey] {
-					seen[dedupKey] = true
-					*apps = append(*apps, *app)
-				}
+				result.pendingReleases = append(result.pendingReleases, pendingRelease{
+					raw:        docBytes,
+					repoRoot:   repoRoot,
+					sourceFile: path,
+				})
 
 			case "kustomization":
 				app, err := parseFluxKustomization(docBytes, repoRoot, path)
@@ -303,15 +310,12 @@ func processYAMLFile(path, repoRoot string, helmRepos map[string]string, apps *[
 				if app == nil {
 					continue
 				}
-				if !seen[app.RootPath] {
-					seen[app.RootPath] = true
-					*apps = append(*apps, *app)
-				}
+				result.apps = append(result.apps, *app)
 			}
 		}
 	}
 
-	return crdFound, nil
+	return result
 }
 
 // buildHelmApp constructs a DiscoveredApp for a Helm chart directory.
