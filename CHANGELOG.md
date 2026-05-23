@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/lukashankeln/glint/compare/v0.1.5...v0.1.6) (2026-05-23)
+
+
+### Bug Fixes
+
+* issues with caching in github action ([72295f2](https://github.com/lukashankeln/glint/commit/72295f2fdd6781981ed47610c01a58aace9dc23a))
+
 ## [0.1.5](https://github.com/lukashankeln/glint/compare/v0.1.4...v0.1.5) (2026-05-23)
 
 

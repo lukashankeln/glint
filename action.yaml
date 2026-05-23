@@ -1,92 +1,106 @@
-name: "glint"
-description: "GitOps linter — auto-render Helm/Kustomize and validate with CEL policies"
-author: "lukashankeln"
-
+name: glint
+description: GitOps linter — auto-render Helm/Kustomize and validate with CEL policies
+author: lukashankeln
 inputs:
   version:
-    description: "glint version to install (e.g. v0.2.0)"
+    description: glint version to install (e.g. v0.2.0)
     required: false
-    default: "0.1.5"
+    default: 0.1.6
   go-version:
-    description: "Go toolchain version used to compile glint (default: matches go.mod)"
+    description: 'Go toolchain version used to compile glint (default: matches go.mod)'
     required: false
-    default: "1.25"
+    default: '1.25'
   config:
-    description: "Path to glint.yaml config file"
+    description: Path to glint.yaml config file
     required: false
-    default: "glint.yaml"
+    default: glint.yaml
   format:
-    description: "Output format: text | json | sarif | junit | github-actions"
+    description: 'Output format: text | json | sarif | junit | github-actions'
     required: false
-    default: "github-actions"
+    default: github-actions
   fail-on:
-    description: "Comma-separated severities that cause the step to fail"
+    description: Comma-separated severities that cause the step to fail
     required: false
-    default: "error"
+    default: error
   upload-sarif:
-    description: "Upload SARIF results to GitHub Security tab (requires security-events: write)"
+    description: >-
+      Upload SARIF results to GitHub Security tab (requires security-events:
+      write)
     required: false
-    default: "true"
+    default: 'true'
   sarif-file:
-    description: "Path to write SARIF output"
+    description: Path to write SARIF output
     required: false
-    default: "glint-results.sarif"
+    default: glint-results.sarif
   paths:
-    description: "Space-separated paths to lint (default: .)"
+    description: 'Space-separated paths to lint (default: .)'
     required: false
-    default: "."
-
+    default: .
 outputs:
   violations:
-    description: "Total number of violations found"
+    description: Total number of violations found
     value: ${{ steps.lint.outputs.violations }}
   errors:
-    description: "Number of error-severity violations"
+    description: Number of error-severity violations
     value: ${{ steps.lint.outputs.errors }}
-
 runs:
-  using: "composite"
+  using: composite
   steps:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
         go-version: ${{ inputs.go-version }}
-
     - name: Cache glint binary
       id: cache-glint
       uses: actions/cache@v4
       with:
         path: ${{ runner.tool_cache }}/glint
         key: glint-${{ inputs.version }}-${{ runner.os }}-${{ runner.arch }}
-
     - name: Install glint
       if: steps.cache-glint.outputs.cache-hit != 'true'
       shell: bash
-      run: |
+      run: >
         VERSION="${{ inputs.version }}" ;
-        VERSION="v${VERSION#v}" ;
-        echo "Installing glint ${VERSION}..." ;
-        GOBIN="${{ runner.tool_cache }}/glint" go install "github.com/lukashankeln/glint/cmd/glint@${VERSION}" >/tmp/glint-install.log 2>&1 || { cat /tmp/glint-install.log; exit 1; } ;
-        echo "Installed: $("${{ runner.tool_cache }}/glint/glint" version)"
 
+        VERSION="v${VERSION#v}" ;
+
+        echo "Installing glint ${VERSION}..." ;
+
+        GOBIN="${{ runner.tool_cache }}/glint" go install
+        "github.com/lukashankeln/glint/cmd/glint@${VERSION}"
+        >/tmp/glint-install.log 2>&1 || { cat /tmp/glint-install.log; exit 1; }
+        ;
+
+        echo "Installed: $("${{ runner.tool_cache }}/glint/glint" version)"
     - name: Add glint to PATH
       shell: bash
       run: echo "${{ runner.tool_cache }}/glint" >> "$GITHUB_PATH"
-
     - name: Run glint
       id: lint
       shell: bash
-      run: |
+      run: >
         set +e ;
-        [ "${{ inputs.upload-sarif }}" = "true" ] && SARIF_FLAG="--output-sarif ${{ inputs.sarif-file }}" || SARIF_FLAG="" ;
-        glint lint ${{ inputs.paths }} --config "${{ inputs.config }}" --format "${{ inputs.format }}" --fail-on "${{ inputs.fail-on }}" --output-json /tmp/glint-results.json $SARIF_FLAG ;
-        EXIT_CODE=$? ;
-        VIOLATIONS=$(jq '.summary.total // 0' /tmp/glint-results.json 2>/dev/null || echo "0") ;
-        ERRORS=$(jq '.summary.errors // 0' /tmp/glint-results.json 2>/dev/null || echo "0") ;
-        echo "violations=$VIOLATIONS" >> "$GITHUB_OUTPUT" ;
-        echo "errors=$ERRORS" >> "$GITHUB_OUTPUT" ;
-        exit $EXIT_CODE
 
+        [ "${{ inputs.upload-sarif }}" = "true" ] && SARIF_FLAG="--output-sarif
+        ${{ inputs.sarif-file }}" || SARIF_FLAG="" ;
+
+        glint lint ${{ inputs.paths }} --config "${{ inputs.config }}" --format
+        "${{ inputs.format }}" --fail-on "${{ inputs.fail-on }}" --output-json
+        /tmp/glint-results.json $SARIF_FLAG ;
+
+        EXIT_CODE=$? ;
+
+        VIOLATIONS=$(jq '.summary.total // 0' /tmp/glint-results.json
+        2>/dev/null || echo "0") ;
+
+        ERRORS=$(jq '.summary.errors // 0' /tmp/glint-results.json 2>/dev/null
+        || echo "0") ;
+
+        echo "violations=$VIOLATIONS" >> "$GITHUB_OUTPUT" ;
+
+        echo "errors=$ERRORS" >> "$GITHUB_OUTPUT" ;
+
+        exit $EXIT_CODE
     - name: Upload SARIF to GitHub Security
       if: inputs.upload-sarif == 'true' && always()
       uses: github/codeql-action/upload-sarif@v3
