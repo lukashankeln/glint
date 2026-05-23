@@ -22,7 +22,8 @@ func newLintCmd() *cobra.Command {
 		format     string
 		failOn     string
 		output     string
-		outputJSON string
+		outputJSON  string
+		outputSARIF string
 	)
 
 	cmd := &cobra.Command{
@@ -119,6 +120,18 @@ func newLintCmd() *cobra.Command {
 					errCount, warnCount, len(allManifests))
 			}
 
+			// Write SARIF alongside any other format (e.g. github-actions + sarif in one run).
+			if outputSARIF != "" {
+				f, err := os.Create(outputSARIF)
+				if err != nil {
+					return fmt.Errorf("creating SARIF output file: %w", err)
+				}
+				defer f.Close()
+				if err := writeSARIF(f, violations); err != nil {
+					return fmt.Errorf("writing SARIF output: %w", err)
+				}
+			}
+
 			// Write JSON summary if requested (for CI step output capture).
 			if outputJSON != "" {
 				s := buildSummary(violations)
@@ -148,6 +161,7 @@ func newLintCmd() *cobra.Command {
 	cmd.Flags().StringVar(&failOn, "fail-on", "", "comma-separated severities that cause non-zero exit (overrides config)")
 	cmd.Flags().StringVar(&output, "output", "", "write output to file instead of stdout")
 	cmd.Flags().StringVar(&outputJSON, "output-json", "", "write JSON summary to file (for CI step capture)")
+	cmd.Flags().StringVar(&outputSARIF, "output-sarif", "", "write SARIF output to file alongside the primary format")
 	return cmd
 }
 

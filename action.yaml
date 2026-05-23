@@ -61,32 +61,27 @@ runs:
           || { cat /tmp/glint-install.log; exit 1; }
         echo "Installed: $(glint version)"
 
-    - name: Run glint (annotations + summary)
+    - name: Run glint
       id: lint
       shell: bash
       run: |
         set +e
+        SARIF_FLAG=""
+        if [ "${{ inputs.upload-sarif }}" = "true" ]; then
+          SARIF_FLAG="--output-sarif ${{ inputs.sarif-file }}"
+        fi
         glint lint ${{ inputs.paths }} \
           --config "${{ inputs.config }}" \
           --format "${{ inputs.format }}" \
           --fail-on "${{ inputs.fail-on }}" \
-          --output-json /tmp/glint-results.json
+          --output-json /tmp/glint-results.json \
+          $SARIF_FLAG
         EXIT_CODE=$?
         VIOLATIONS=$(jq '.summary.total // 0' /tmp/glint-results.json 2>/dev/null || echo "0")
         ERRORS=$(jq '.summary.errors // 0' /tmp/glint-results.json 2>/dev/null || echo "0")
         echo "violations=$VIOLATIONS" >> "$GITHUB_OUTPUT"
         echo "errors=$ERRORS" >> "$GITHUB_OUTPUT"
         exit $EXIT_CODE
-
-    - name: Run glint (SARIF)
-      if: inputs.upload-sarif == 'true' && always()
-      shell: bash
-      run: |
-        glint lint ${{ inputs.paths }} \
-          --config "${{ inputs.config }}" \
-          --format sarif \
-          --output "${{ inputs.sarif-file }}" \
-          --fail-on "" || true
 
     - name: Upload SARIF to GitHub Security
       if: inputs.upload-sarif == 'true' && always()
