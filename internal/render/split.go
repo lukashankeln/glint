@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"strings"
 
-	"github.com/rs/zerolog/log"
+	"log/slog"
+
 	"gopkg.in/yaml.v3"
 	sigsyaml "sigs.k8s.io/yaml"
 
@@ -36,13 +37,13 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 		// Convert to JSON-compatible map using sigs.k8s.io/yaml.
 		jsonBytes, err := sigsyaml.YAMLToJSON(docBytes)
 		if err != nil {
-			log.Debug().Err(err).Str("app", appName).Msg("skipping document: yaml-to-json failed")
+			slog.Debug("skipping document: yaml-to-json failed", "app", appName, "err", err)
 			continue
 		}
 
 		var obj map[string]any
 		if err := sigsyaml.Unmarshal(docBytes, &obj); err != nil {
-			log.Debug().Err(err).Str("app", appName).Msg("skipping document: unmarshal failed")
+			slog.Debug("skipping document: unmarshal failed", "app", appName, "err", err)
 			continue
 		}
 		if obj == nil {
@@ -54,10 +55,7 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 		kind, _ := obj["kind"].(string)
 
 		if apiVersion == "" || kind == "" {
-			log.Debug().
-				Str("app", appName).
-				Str("source", sourcePath).
-				Msg("skipping document without apiVersion/kind")
+			slog.Debug("skipping document without apiVersion/kind", "app", appName, "source", sourcePath)
 			continue
 		}
 

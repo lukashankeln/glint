@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/rs/zerolog/log"
+	"log/slog"
 
 	"github.com/lukashankeln/glint/internal/config"
 	"github.com/lukashankeln/glint/internal/discovery"
@@ -43,7 +43,7 @@ func renderAppsParallel(ctx context.Context, apps []discovery.DiscoveredApp, cfg
 		wg.Go(func() {
 			for idx := range jobs {
 				app := apps[idx]
-				log.Debug().Str("app", app.Name).Str("renderer", string(app.Renderer)).Msg("rendering app")
+				slog.Debug("rendering app", "app", app.Name, "renderer", app.Renderer)
 				r := render.New(app, cfg)
 				manifests, err := r.Render(ctx, app)
 				ch <- workResult{idx: idx, manifests: manifests, err: err}

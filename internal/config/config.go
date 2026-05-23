@@ -2,155 +2,205 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
-	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
 )
 
 // Config is the top-level configuration structure populated from glint.yaml.
 type Config struct {
-	Version   string          `mapstructure:"version"`
-	Discovery DiscoveryConfig `mapstructure:"discovery"`
-	Render    RenderConfig    `mapstructure:"render"`
-	Rules     RulesConfig     `mapstructure:"rules"`
-	Output    OutputConfig    `mapstructure:"output"`
-	FailOn    []string        `mapstructure:"fail_on"`
+	Version   string          `yaml:"version"`
+	Discovery DiscoveryConfig `yaml:"discovery"`
+	Render    RenderConfig    `yaml:"render"`
+	Rules     RulesConfig     `yaml:"rules"`
+	Output    OutputConfig    `yaml:"output"`
+	FailOn    []string        `yaml:"fail_on"`
 }
 
 type DiscoveryConfig struct {
-	Paths     []string            `mapstructure:"paths"`
-	Exclude   []string            `mapstructure:"exclude"`
-	Overrides []DiscoveryOverride `mapstructure:"overrides"`
+	Paths     []string            `yaml:"paths"`
+	Exclude   []string            `yaml:"exclude"`
+	Overrides []DiscoveryOverride `yaml:"overrides"`
 }
 
 type DiscoveryOverride struct {
-	Path     string       `mapstructure:"path"`
-	Renderer string       `mapstructure:"renderer"`
-	Helm     HelmOverride `mapstructure:"helm"`
+	Path     string       `yaml:"path"`
+	Renderer string       `yaml:"renderer"`
+	Helm     HelmOverride `yaml:"helm"`
 }
 
 type HelmOverride struct {
-	ReleaseName string            `mapstructure:"release_name"`
-	Namespace   string            `mapstructure:"namespace"`
-	ValuesFiles []string          `mapstructure:"values_files"`
-	Set         map[string]string `mapstructure:"set"`
+	ReleaseName string            `yaml:"release_name"`
+	Namespace   string            `yaml:"namespace"`
+	ValuesFiles []string          `yaml:"values_files"`
+	Set         map[string]string `yaml:"set"`
 }
 
 type RenderConfig struct {
-	Helm               HelmRenderConfig      `mapstructure:"helm"`
-	Kustomize          KustomizeRenderConfig `mapstructure:"kustomize"`
-	SubprocessFallback bool                  `mapstructure:"subprocess_fallback"`
+	Helm               HelmRenderConfig      `yaml:"helm"`
+	Kustomize          KustomizeRenderConfig `yaml:"kustomize"`
+	SubprocessFallback bool                  `yaml:"subprocess_fallback"`
 }
 
 type HelmRenderConfig struct {
-	KubernetesVersion string   `mapstructure:"kubernetes_version"`
-	IncludeCRDs       bool     `mapstructure:"include_crds"`
-	APIVersions       []string `mapstructure:"api_versions"`
-	Timeout           string   `mapstructure:"timeout"`
+	KubernetesVersion string   `yaml:"kubernetes_version"`
+	IncludeCRDs       bool     `yaml:"include_crds"`
+	APIVersions       []string `yaml:"api_versions"`
+	Timeout           string   `yaml:"timeout"`
 }
 
 type KustomizeRenderConfig struct {
-	EnableHelm     bool   `mapstructure:"enable_helm"`
-	LoadRestrictor string `mapstructure:"load_restrictor"`
-	Timeout        string `mapstructure:"timeout"`
+	EnableHelm     bool   `yaml:"enable_helm"`
+	LoadRestrictor string `yaml:"load_restrictor"`
+	Timeout        string `yaml:"timeout"`
 }
 
 type RulesConfig struct {
-	BuiltIn    BuiltInRulesConfig `mapstructure:"built_in"`
-	Custom     []CustomRuleDef    `mapstructure:"custom"`
-	RuleFiles  []string           `mapstructure:"rule_files"`
-	Exceptions []ExceptionConfig  `mapstructure:"exceptions"`
+	BuiltIn    BuiltInRulesConfig `yaml:"built_in"`
+	Custom     []CustomRuleDef    `yaml:"custom"`
+	RuleFiles  []string           `yaml:"rule_files"`
+	Exceptions []ExceptionConfig  `yaml:"exceptions"`
 }
 
 type ExceptionConfig struct {
-	Rule      string                      `mapstructure:"rule"`
-	Resources []ExceptionResourceSelector `mapstructure:"resources"`
+	Rule      string                      `yaml:"rule"`
+	Resources []ExceptionResourceSelector `yaml:"resources"`
 }
 
 type ExceptionResourceSelector struct {
-	Kind      string `mapstructure:"kind"`      // exact match; empty = any
-	Name      string `mapstructure:"name"`      // glob; empty = any
-	Namespace string `mapstructure:"namespace"` // glob; empty = any
-	Reason    string `mapstructure:"reason"`    // documentation only
+	Kind      string `yaml:"kind"`      // exact match; empty = any
+	Name      string `yaml:"name"`      // glob; empty = any
+	Namespace string `yaml:"namespace"` // glob; empty = any
+	Reason    string `yaml:"reason"`    // documentation only
 }
 
 type BuiltInRulesConfig struct {
-	NoLatestTag      BuiltInRuleConfig `mapstructure:"no_latest_tag"`
-	ResourceRequests BuiltInRuleConfig `mapstructure:"resource_requests"`
-	DeprecatedAPIs   BuiltInRuleConfig `mapstructure:"deprecated_apis"`
+	NoLatestTag      BuiltInRuleConfig `yaml:"no_latest_tag"`
+	ResourceRequests BuiltInRuleConfig `yaml:"resource_requests"`
+	DeprecatedAPIs   BuiltInRuleConfig `yaml:"deprecated_apis"`
 }
 
 type BuiltInRuleConfig struct {
-	Enabled  bool           `mapstructure:"enabled"`
-	Severity string         `mapstructure:"severity"`
-	Params   map[string]any `mapstructure:"params"`
+	Enabled  bool           `yaml:"enabled"`
+	Severity string         `yaml:"severity"`
+	Params   map[string]any `yaml:"params"`
 }
 
 type CustomRuleDef struct {
-	ID          string            `mapstructure:"id"`
-	Description string            `mapstructure:"description"`
-	Severity    string            `mapstructure:"severity"`
-	Match       MatchFilterConfig `mapstructure:"match"`
-	Expression  string            `mapstructure:"expression"`
-	Message     string            `mapstructure:"message"`
+	ID          string            `yaml:"id"`
+	Description string            `yaml:"description"`
+	Severity    string            `yaml:"severity"`
+	Match       MatchFilterConfig `yaml:"match"`
+	Expression  string            `yaml:"expression"`
+	Message     string            `yaml:"message"`
 }
 
 type MatchFilterConfig struct {
-	Kinds             []string          `mapstructure:"kinds"`
-	APIGroups         []string          `mapstructure:"api_groups"`
-	Namespaces        []string          `mapstructure:"namespaces"`
-	ExcludeNamespaces []string          `mapstructure:"exclude_namespaces"`
-	Labels            map[string]string `mapstructure:"labels"`
+	Kinds             []string          `yaml:"kinds"`
+	APIGroups         []string          `yaml:"api_groups"`
+	Namespaces        []string          `yaml:"namespaces"`
+	ExcludeNamespaces []string          `yaml:"exclude_namespaces"`
+	Labels            map[string]string `yaml:"labels"`
 }
 
 type OutputConfig struct {
-	Format      string `mapstructure:"format"`
-	Color       string `mapstructure:"color"`
-	OutputFile  string `mapstructure:"output_file"`
-	GroupBy     string `mapstructure:"group_by"`
-	ShowSkipped bool   `mapstructure:"show_skipped"`
-	Summary     bool   `mapstructure:"summary"`
+	Format      string `yaml:"format"`
+	Color       string `yaml:"color"`
+	OutputFile  string `yaml:"output_file"`
+	GroupBy     string `yaml:"group_by"`
+	ShowSkipped bool   `yaml:"show_skipped"`
+	Summary     bool   `yaml:"summary"`
 }
 
-// Load reads and unmarshals the config file found via viper's search path.
-// If configFile is non-empty, it is used directly; otherwise viper searches
-// for glint.yaml / .glint.yaml / .glint/config.yaml in the working directory.
+// Load reads and unmarshals the config file. The config file is optional;
+// if none is found, defaults are used. An explicit configFile path is an
+// error if the file does not exist.
 func Load(configFile string) (*Config, error) {
-	v := viper.New()
+	cfg := defaultConfig()
 
-	setDefaults(v)
-
-	if configFile != "" {
-		v.SetConfigFile(configFile)
-	} else {
-		v.SetConfigName("glint")
-		v.AddConfigPath(".")
-		v.SetConfigName(".glint")
-		v.AddConfigPath(".")
-		v.AddConfigPath(".glint")
+	path, err := findConfigFile(configFile)
+	if err != nil {
+		return nil, err
 	}
 
-	if err := v.ReadInConfig(); err != nil {
-		// Config file is optional — only error if one was explicitly provided
-		if configFile != "" {
-			return nil, fmt.Errorf("reading config file %q: %w", configFile, err)
+	if path != "" {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("reading config file %q: %w", path, err)
 		}
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			// File was found but couldn't be parsed
-			return nil, fmt.Errorf("parsing config file: %w", err)
+		// yaml.Unmarshal only sets fields present in the document;
+		// fields absent from the YAML retain their pre-populated defaults.
+		if err := yaml.Unmarshal(data, cfg); err != nil {
+			return nil, fmt.Errorf("parsing config file %q: %w", path, err)
 		}
-	}
-
-	var cfg Config
-	if err := v.Unmarshal(&cfg); err != nil {
-		return nil, fmt.Errorf("unmarshalling config: %w", err)
 	}
 
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
-	return &cfg, nil
+	return cfg, nil
+}
+
+// findConfigFile returns the path of the config file to use. If explicit is
+// non-empty it is returned directly (error if it doesn't exist). Otherwise the
+// standard search paths are tried and the first match is returned.
+func findConfigFile(explicit string) (string, error) {
+	if explicit != "" {
+		if _, err := os.Stat(explicit); err != nil {
+			return "", fmt.Errorf("reading config file %q: %w", explicit, err)
+		}
+		return explicit, nil
+	}
+	for _, candidate := range []string{
+		"glint.yaml", "glint.yml",
+		".glint.yaml", ".glint.yml",
+		".glint/config.yaml", ".glint/config.yml",
+	} {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, nil
+		}
+	}
+	return "", nil // config is optional
+}
+
+// defaultConfig returns a Config pre-populated with all default values.
+func defaultConfig() *Config {
+	return &Config{
+		Version: "v1alpha1",
+		Discovery: DiscoveryConfig{
+			Paths:   []string{"."},
+			Exclude: DefaultExcludePatterns,
+		},
+		Render: RenderConfig{
+			Helm: HelmRenderConfig{
+				KubernetesVersion: DefaultKubernetesVersion,
+				IncludeCRDs:       true,
+				Timeout:           "120s",
+			},
+			Kustomize: KustomizeRenderConfig{
+				EnableHelm:     false,
+				LoadRestrictor: "rootOnly",
+				Timeout:        "60s",
+			},
+			SubprocessFallback: false,
+		},
+		Rules: RulesConfig{
+			BuiltIn: BuiltInRulesConfig{
+				NoLatestTag:      BuiltInRuleConfig{Enabled: true, Severity: "error"},
+				ResourceRequests: BuiltInRuleConfig{Enabled: false, Severity: "warning"},
+				DeprecatedAPIs:   BuiltInRuleConfig{Enabled: true, Severity: "error"},
+			},
+		},
+		Output: OutputConfig{
+			Format:  DefaultOutputFormat,
+			Color:   DefaultOutputColor,
+			GroupBy: "source",
+			Summary: true,
+		},
+		FailOn: DefaultFailOn,
+	}
 }
 
 // Validate checks the config for semantic errors.
@@ -180,28 +230,4 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
-}
-
-func setDefaults(v *viper.Viper) {
-	v.SetDefault("version", "v1alpha1")
-	v.SetDefault("discovery.paths", []string{"."})
-	v.SetDefault("discovery.exclude", DefaultExcludePatterns)
-	v.SetDefault("render.helm.kubernetes_version", DefaultKubernetesVersion)
-	v.SetDefault("render.helm.include_crds", true)
-	v.SetDefault("render.helm.timeout", "120s")
-	v.SetDefault("render.kustomize.enable_helm", false)
-	v.SetDefault("render.kustomize.load_restrictor", "rootOnly")
-	v.SetDefault("render.kustomize.timeout", "60s")
-	v.SetDefault("render.subprocess_fallback", false)
-	v.SetDefault("rules.built_in.no_latest_tag.enabled", true)
-	v.SetDefault("rules.built_in.no_latest_tag.severity", "error")
-	v.SetDefault("rules.built_in.resource_requests.enabled", false)
-	v.SetDefault("rules.built_in.resource_requests.severity", "warning")
-	v.SetDefault("rules.built_in.deprecated_apis.enabled", true)
-	v.SetDefault("rules.built_in.deprecated_apis.severity", "error")
-	v.SetDefault("output.format", DefaultOutputFormat)
-	v.SetDefault("output.color", DefaultOutputColor)
-	v.SetDefault("output.group_by", "source")
-	v.SetDefault("output.summary", true)
-	v.SetDefault("fail_on", DefaultFailOn)
 }

@@ -6,7 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/rs/zerolog/log"
+	"log/slog"
+
 	"github.com/spf13/cobra"
 	sigsyaml "sigs.k8s.io/yaml"
 
@@ -63,12 +64,12 @@ Use --output <dir> to write each app to <dir>/<appname>.yaml.`,
 				}
 
 				if r.err != nil {
-					log.Warn().Err(r.err).Str("app", r.app.Name).Msg("render failed, skipping")
+					slog.Warn("render failed, skipping", "app", r.app.Name, "err", r.err)
 					continue
 				}
 
 				if len(r.manifests) == 0 {
-					log.Debug().Str("app", r.app.Name).Msg("no manifests produced")
+					slog.Debug("no manifests produced", "app", r.app.Name)
 					continue
 				}
 
@@ -77,7 +78,7 @@ Use --output <dir> to write each app to <dir>/<appname>.yaml.`,
 
 				if output != "" && output != "-" {
 					if err := writeManifestsToFile(output, r.app, r.manifests, format); err != nil {
-						log.Warn().Err(err).Str("app", r.app.Name).Msg("failed to write output file")
+						slog.Warn("failed to write output file", "app", r.app.Name, "err", err)
 					}
 					continue
 				}
@@ -87,7 +88,7 @@ Use --output <dir> to write each app to <dir>/<appname>.yaml.`,
 					return err
 				}
 			}
-			log.Info().Int("apps", rendered).Int("manifests", totalManifests).Msg("rendering complete")
+			slog.Info("rendering complete", "apps", rendered, "manifests", totalManifests)
 
 			return nil
 		},

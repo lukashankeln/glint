@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
-	"github.com/rs/zerolog/log"
+	"log/slog"
 
 	"github.com/lukashankeln/glint/internal/config"
 	"github.com/lukashankeln/glint/internal/manifest"
@@ -84,7 +84,7 @@ func NewEngine(cfg config.RulesConfig) (*Engine, error) {
 			return cr.Def.ID == exc.Rule
 		})
 		if !found {
-			log.Warn().Str("rule", exc.Rule).Msg("exception references unknown rule ID, skipping")
+			slog.Warn("exception references unknown rule ID, skipping", "rule", exc.Rule)
 		}
 	}
 
@@ -180,9 +180,7 @@ func (e *Engine) evaluateManifest(m manifest.Manifest) []Violation {
 
 		out, _, err := rule.program.Eval(vars)
 		if err != nil {
-			log.Warn().Err(err).Str("rule", rule.Def.ID).
-				Str("resource", m.Kind+"/"+m.Name).
-				Msg("CEL evaluation error, skipping")
+			slog.Warn("CEL evaluation error, skipping", "rule", rule.Def.ID, "resource", m.Kind+"/"+m.Name, "err", err)
 			continue
 		}
 

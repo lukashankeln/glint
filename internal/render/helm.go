@@ -3,10 +3,10 @@ package render
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 
-	"github.com/rs/zerolog/log"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/chartutil"
@@ -46,7 +46,7 @@ func (r *HelmRenderer) renderSDK(ctx context.Context, app discovery.DiscoveredAp
 
 	actionCfg := new(action.Configuration)
 	if err := actionCfg.Init(nil, namespace(app), "memory", func(format string, v ...any) {
-		log.Debug().Msgf("[helm] "+format, v...)
+		slog.Debug(fmt.Sprintf("[helm] "+format, v...))
 	}); err != nil {
 		return nil, fmt.Errorf("helm action config init: %w", err)
 	}
@@ -134,12 +134,12 @@ func (r *HelmRenderer) buildValues(app discovery.DiscoveredApp) (map[string]any,
 	for _, vf := range app.ValuesFiles {
 		data, err := os.ReadFile(vf)
 		if err != nil {
-			log.Warn().Err(err).Str("file", vf).Msg("failed to read values file, skipping")
+			slog.Warn("failed to read values file, skipping", "file", vf, "err", err)
 			continue
 		}
 		vals, err := chartutil.ReadValues(data)
 		if err != nil {
-			log.Warn().Err(err).Str("file", vf).Msg("failed to parse values file, skipping")
+			slog.Warn("failed to parse values file, skipping", "file", vf, "err", err)
 			continue
 		}
 		base = mergeValues(base, vals.AsMap())

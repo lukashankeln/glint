@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io/fs"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -11,7 +12,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v3"
 
 	"github.com/lukashankeln/glint/internal/config"
@@ -72,7 +72,7 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 
 		err = filepath.WalkDir(abs, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
-				log.Warn().Err(err).Str("path", path).Msg("skipping unreadable path")
+				slog.Warn("skipping unreadable path", "path", path, "err", err)
 				return nil
 			}
 			if ctx.Err() != nil {
@@ -153,11 +153,11 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 			for _, pr := range fr.pendingReleases {
 				app, err := parseFluxHelmRelease(pr.raw, pr.repoRoot, pr.sourceFile, helmRepos)
 				if err != nil {
-					log.Warn().Err(err).Str("file", pr.sourceFile).Msg("failed to parse Flux HelmRelease")
+					slog.Warn("failed to parse Flux HelmRelease", "file", pr.sourceFile, "err", err)
 					continue
 				}
 				if app == nil {
-					log.Debug().Str("file", pr.sourceFile).Msg("skipping Flux HelmRelease with unresolvable chart")
+					slog.Debug("skipping Flux HelmRelease with unresolvable chart", "file", pr.sourceFile)
 					continue
 				}
 				dedupKey := app.RootPath
@@ -181,7 +181,7 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 		}
 	}
 
-	log.Info().Int("files", filesScanned).Int("apps", len(apps)).Msg("discovery complete")
+	slog.Info("discovery complete", "files", filesScanned, "apps", len(apps))
 	return apps, nil
 }
 
@@ -231,7 +231,7 @@ func parseFile(ctx context.Context, path, repoRoot string) fileResult {
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		log.Warn().Err(err).Str("file", path).Msg("skipping file with parse errors")
+		slog.Warn("skipping file with parse errors", "file", path, "err", err)
 		return fileResult{}
 	}
 
@@ -272,11 +272,11 @@ func parseFile(ctx context.Context, path, repoRoot string) fileResult {
 			}
 			app, err := parseArgoCDApplication(docBytes, repoRoot, path)
 			if err != nil {
-				log.Warn().Err(err).Str("file", path).Msg("failed to parse ArgoCD Application")
+				slog.Warn("failed to parse ArgoCD Application", "file", path, "err", err)
 				continue
 			}
 			if app == nil {
-				log.Debug().Str("file", path).Msg("skipping ArgoCD Application with remote repoURL")
+				slog.Debug("skipping ArgoCD Application with remote repoURL", "file", path)
 				continue
 			}
 			result.apps = append(result.apps, *app)
@@ -304,7 +304,7 @@ func parseFile(ctx context.Context, path, repoRoot string) fileResult {
 			case "kustomization":
 				app, err := parseFluxKustomization(docBytes, repoRoot, path)
 				if err != nil {
-					log.Warn().Err(err).Str("file", path).Msg("failed to parse Flux Kustomization")
+					slog.Warn("failed to parse Flux Kustomization", "file", path, "err", err)
 					continue
 				}
 				if app == nil {

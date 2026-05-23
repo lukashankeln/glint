@@ -6,7 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/rs/zerolog/log"
+	"log/slog"
+
 	"github.com/spf13/cobra"
 
 	"github.com/lukashankeln/glint/internal/config"
@@ -79,13 +80,13 @@ func newLintCmd() *cobra.Command {
 					return cmd.Context().Err()
 				}
 				if r.err != nil {
-					log.Warn().Err(r.err).Str("app", r.app.Name).Msg("render failed, skipping")
+					slog.Warn("render failed, skipping", "app", r.app.Name, "err", r.err)
 					continue
 				}
 				rendered++
 				allManifests = append(allManifests, r.manifests...)
 			}
-			log.Info().Int("apps", rendered).Int("manifests", len(allManifests)).Msg("rendering complete")
+			slog.Info("rendering complete", "apps", rendered, "manifests", len(allManifests))
 
 			// Evaluate rules.
 			violations := engine.Evaluate(allManifests)
