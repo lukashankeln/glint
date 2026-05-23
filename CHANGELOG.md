@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.4](https://github.com/lukashankeln/glint/compare/v0.1.3...v0.1.4) (2026-05-23)
+
+
+### Bug Fixes
+
+* improve discovery performance ([04fb5ac](https://github.com/lukashankeln/glint/commit/04fb5ac5bf8ff1c5f0bbdd8aa57b064f32fe4442))
+* pre-render cel rules ([c5173d4](https://github.com/lukashankeln/glint/commit/c5173d4b0658483989cfad9dd5d43e0795b150db))
+* remove not needed marshal in rendering ([95b8b6a](https://github.com/lukashankeln/glint/commit/95b8b6ac3deee6e4bdb0107d0ebdec9bdcddd517))
+* use release-please to update version in action for caching ([ccc26a5](https://github.com/lukashankeln/glint/commit/ccc26a5905ad9b0bf8762c41fe89d8474337f54f))
+
 ## [0.1.3](https://github.com/lukashankeln/glint/compare/v0.1.2...v0.1.3) (2026-05-23)
 
 
