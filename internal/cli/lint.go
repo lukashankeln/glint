@@ -12,7 +12,6 @@ import (
 	"github.com/lukashankeln/glint/internal/config"
 	"github.com/lukashankeln/glint/internal/discovery"
 	"github.com/lukashankeln/glint/internal/manifest"
-	"github.com/lukashankeln/glint/internal/render"
 	"github.com/lukashankeln/glint/internal/rules"
 )
 
@@ -71,22 +70,19 @@ func newLintCmd() *cobra.Command {
 				return nil
 			}
 
-			// Render all apps and collect manifests.
+			// Render all apps in parallel and collect manifests.
 			var allManifests []manifest.Manifest
 			rendered := 0
-			for _, app := range apps {
+			for _, r := range renderAppsParallel(cmd.Context(), apps, cfg) {
 				if cmd.Context().Err() != nil {
 					return cmd.Context().Err()
 				}
-				log.Debug().Str("app", app.Name).Str("renderer", string(app.Renderer)).Msg("rendering app")
-				renderer := render.New(app, cfg)
-				manifests, err := renderer.Render(cmd.Context(), app)
-				if err != nil {
-					log.Warn().Err(err).Str("app", app.Name).Msg("render failed, skipping")
+				if r.err != nil {
+					log.Warn().Err(r.err).Str("app", r.app.Name).Msg("render failed, skipping")
 					continue
 				}
 				rendered++
-				allManifests = append(allManifests, manifests...)
+				allManifests = append(allManifests, r.manifests...)
 			}
 			log.Info().Int("apps", rendered).Int("manifests", len(allManifests)).Msg("rendering complete")
 

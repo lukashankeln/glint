@@ -13,7 +13,6 @@ import (
 	"github.com/lukashankeln/glint/internal/config"
 	"github.com/lukashankeln/glint/internal/discovery"
 	"github.com/lukashankeln/glint/internal/manifest"
-	"github.com/lukashankeln/glint/internal/render"
 )
 
 func newRenderCmd() *cobra.Command {
@@ -58,36 +57,33 @@ Use --output <dir> to write each app to <dir>/<appname>.yaml.`,
 
 			rendered := 0
 			totalManifests := 0
-			for _, app := range apps {
+			for _, r := range renderAppsParallel(cmd.Context(), apps, cfg) {
 				if cmd.Context().Err() != nil {
 					return cmd.Context().Err()
 				}
 
-				log.Debug().Str("app", app.Name).Str("renderer", string(app.Renderer)).Msg("rendering app")
-				renderer := render.New(app, cfg)
-				manifests, err := renderer.Render(cmd.Context(), app)
-				if err != nil {
-					log.Warn().Err(err).Str("app", app.Name).Msg("render failed, skipping")
+				if r.err != nil {
+					log.Warn().Err(r.err).Str("app", r.app.Name).Msg("render failed, skipping")
 					continue
 				}
 
-				if len(manifests) == 0 {
-					log.Debug().Str("app", app.Name).Msg("no manifests produced")
+				if len(r.manifests) == 0 {
+					log.Debug().Str("app", r.app.Name).Msg("no manifests produced")
 					continue
 				}
 
 				rendered++
-				totalManifests += len(manifests)
+				totalManifests += len(r.manifests)
 
 				if output != "" && output != "-" {
-					if err := writeManifestsToFile(output, app, manifests, format); err != nil {
-						log.Warn().Err(err).Str("app", app.Name).Msg("failed to write output file")
+					if err := writeManifestsToFile(output, r.app, r.manifests, format); err != nil {
+						log.Warn().Err(err).Str("app", r.app.Name).Msg("failed to write output file")
 					}
 					continue
 				}
 
 				// Write to stdout.
-				if err := writeManifestsToWriter(cmd, app, manifests, format); err != nil {
+				if err := writeManifestsToWriter(cmd, r.app, r.manifests, format); err != nil {
 					return err
 				}
 			}
