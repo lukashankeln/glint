@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/lukashankeln/glint/compare/v0.1.2...v0.1.3) (2026-05-23)
+
+
+### Bug Fixes
+
+* remove zerolog and viper as dependencies ([29785ab](https://github.com/lukashankeln/glint/commit/29785ab97cea4a06c9f3237997ffd7c99f6342b6))
+
 ## [0.1.2](https://github.com/lukashankeln/glint/compare/v0.1.1...v0.1.2) (2026-05-23)
 
 
