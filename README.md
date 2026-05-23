@@ -134,7 +134,7 @@ discovery:
 
 render:
   helm:
-    kubernetes_version: "1.29.0"
+    kubernetes_version: "1.36.0"
     include_crds: true
 
 rules:

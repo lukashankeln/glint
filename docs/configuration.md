@@ -63,7 +63,7 @@ glint auto-detects the renderer for each app:
 ```yaml
 render:
   helm:
-    kubernetes_version: "1.29.0"  # Sets .Capabilities.KubeVersion
+    kubernetes_version: "1.36.0"   # Sets .Capabilities.KubeVersion
     include_crds: true             # Include CRD manifests in output
     api_versions: []               # Extra entries for .Capabilities.APIVersions
     timeout: "120s"                # Per-chart render timeout
@@ -203,7 +203,7 @@ discovery:
 
 render:
   helm:
-    kubernetes_version: "1.29.0"
+    kubernetes_version: "1.36.0"
     include_crds: true
   kustomize:
     enable_helm: false

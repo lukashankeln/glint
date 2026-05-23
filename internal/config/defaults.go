@@ -1,7 +1,7 @@
 package config
 
 const (
-	DefaultKubernetesVersion = "1.29.0"
+	DefaultKubernetesVersion = "1.36.0"
 	DefaultLogLevel          = "info"
 	DefaultOutputFormat      = "text"
 	DefaultOutputColor       = "auto"
