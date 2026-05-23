@@ -34,22 +34,14 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 			continue
 		}
 
-		// Convert to JSON-compatible map using sigs.k8s.io/yaml.
-		jsonBytes, err := sigsyaml.YAMLToJSON(docBytes)
-		if err != nil {
-			slog.Debug("skipping document: yaml-to-json failed", "app", appName, "err", err)
-			continue
-		}
-
 		var obj map[string]any
 		if err := sigsyaml.Unmarshal(docBytes, &obj); err != nil {
-			slog.Debug("skipping document: unmarshal failed", "app", appName, "err", err)
+			slog.Debug("skipping document", "app", appName, "err", err)
 			continue
 		}
 		if obj == nil {
 			continue // comment-only or blank
 		}
-		_ = jsonBytes // used for validation above
 
 		apiVersion, _ := obj["apiVersion"].(string)
 		kind, _ := obj["kind"].(string)
