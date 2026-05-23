@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/lukashankeln/glint/compare/v0.1.4...v0.1.5) (2026-05-23)
+
+
+### Bug Fixes
+
+* missing v in default version input ([8b61624](https://github.com/lukashankeln/glint/commit/8b616241c5a9ca1d69c5f3e873d78924ceeb9621))
+
 ## [0.1.4](https://github.com/lukashankeln/glint/compare/v0.1.3...v0.1.4) (2026-05-23)
 
 
