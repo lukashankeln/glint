@@ -17,13 +17,6 @@ import (
 	"github.com/lukashankeln/glint/internal/config"
 )
 
-// minimalDoc is decoded first to determine the kind and apiVersion of a
-// YAML document before doing heavier parsing.
-type minimalDoc struct {
-	APIVersion string `yaml:"apiVersion"`
-	Kind       string `yaml:"kind"`
-}
-
 // fileResult holds everything extracted from a single YAML file during the
 // parallel processing phase.
 type fileResult struct {
@@ -250,24 +243,22 @@ func parseFile(ctx context.Context, path, repoRoot string) fileResult {
 			continue
 		}
 
+		apiVersion := nodeField(&node, "apiVersion")
+		kind := nodeField(&node, "kind")
+		framework := detectFramework(apiVersion, kind)
+		if framework == FrameworkPlain {
+			continue
+		}
+
+		// Only serialize to bytes now that we know this document is a CRD we handle.
 		docBytes, err := yaml.Marshal(&node)
 		if err != nil {
 			continue
 		}
 
-		var md minimalDoc
-		if err := yaml.Unmarshal(docBytes, &md); err != nil {
-			continue
-		}
-
-		framework := detectFramework(md.APIVersion, md.Kind)
-		if framework == FrameworkPlain {
-			continue
-		}
-
 		switch framework {
 		case FrameworkArgoCD:
-			if strings.ToLower(md.Kind) == "applicationset" {
+			if strings.ToLower(kind) == "applicationset" {
 				continue
 			}
 			app, err := parseArgoCDApplication(docBytes, repoRoot, path)
@@ -282,8 +273,7 @@ func parseFile(ctx context.Context, path, repoRoot string) fileResult {
 			result.apps = append(result.apps, *app)
 
 		case FrameworkFlux:
-			kind := strings.ToLower(md.Kind)
-			switch kind {
+			switch strings.ToLower(kind) {
 			case "helmrepository":
 				key, url, err := parseFluxHelmRepository(docBytes)
 				if err != nil || key == "" {
@@ -406,6 +396,27 @@ func findRepoRoot(dir string) string {
 		}
 		current = parent
 	}
+}
+
+// nodeField extracts a top-level string field from a yaml.Node without
+// re-serializing the document. This avoids a Marshal+Unmarshal roundtrip
+// when all we need is a couple of scalar values (apiVersion, kind).
+func nodeField(n *yaml.Node, key string) string {
+	if n.Kind == yaml.DocumentNode {
+		if len(n.Content) > 0 {
+			return nodeField(n.Content[0], key)
+		}
+		return ""
+	}
+	if n.Kind != yaml.MappingNode {
+		return ""
+	}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		if n.Content[i].Value == key {
+			return n.Content[i+1].Value
+		}
+	}
+	return ""
 }
 
 // isYAMLFile reports whether filename has a .yaml or .yml extension.
