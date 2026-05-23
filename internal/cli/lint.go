@@ -73,18 +73,22 @@ func newLintCmd() *cobra.Command {
 
 			// Render all apps and collect manifests.
 			var allManifests []manifest.Manifest
+			rendered := 0
 			for _, app := range apps {
 				if cmd.Context().Err() != nil {
 					return cmd.Context().Err()
 				}
+				log.Debug().Str("app", app.Name).Str("renderer", string(app.Renderer)).Msg("rendering app")
 				renderer := render.New(app, cfg)
 				manifests, err := renderer.Render(cmd.Context(), app)
 				if err != nil {
 					log.Warn().Err(err).Str("app", app.Name).Msg("render failed, skipping")
 					continue
 				}
+				rendered++
 				allManifests = append(allManifests, manifests...)
 			}
+			log.Info().Int("apps", rendered).Int("manifests", len(allManifests)).Msg("rendering complete")
 
 			// Evaluate rules.
 			violations := engine.Evaluate(allManifests)

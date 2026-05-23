@@ -56,11 +56,14 @@ Use --output <dir> to write each app to <dir>/<appname>.yaml.`,
 				}
 			}
 
+			rendered := 0
+			totalManifests := 0
 			for _, app := range apps {
 				if cmd.Context().Err() != nil {
 					return cmd.Context().Err()
 				}
 
+				log.Debug().Str("app", app.Name).Str("renderer", string(app.Renderer)).Msg("rendering app")
 				renderer := render.New(app, cfg)
 				manifests, err := renderer.Render(cmd.Context(), app)
 				if err != nil {
@@ -72,6 +75,9 @@ Use --output <dir> to write each app to <dir>/<appname>.yaml.`,
 					log.Debug().Str("app", app.Name).Msg("no manifests produced")
 					continue
 				}
+
+				rendered++
+				totalManifests += len(manifests)
 
 				if output != "" && output != "-" {
 					if err := writeManifestsToFile(output, app, manifests, format); err != nil {
@@ -85,6 +91,7 @@ Use --output <dir> to write each app to <dir>/<appname>.yaml.`,
 					return err
 				}
 			}
+			log.Info().Int("apps", rendered).Int("manifests", totalManifests).Msg("rendering complete")
 
 			return nil
 		},

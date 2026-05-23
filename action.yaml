@@ -56,11 +56,10 @@ runs:
       shell: bash
       run: |
         VERSION="${{ inputs.version }}"
-        if [ "$VERSION" = "latest" ]; then
-          go install github.com/lukashankeln/glint/cmd/glint@latest
-        else
-          go install github.com/lukashankeln/glint/cmd/glint@"${VERSION}"
-        fi
+        echo "Installing glint ${VERSION}..."
+        go install "github.com/lukashankeln/glint/cmd/glint@${VERSION}" >/tmp/glint-install.log 2>&1 \
+          || { cat /tmp/glint-install.log; exit 1; }
+        echo "Installed: $(glint version)"
 
     - name: Run glint (annotations + summary)
       id: lint

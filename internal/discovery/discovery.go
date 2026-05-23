@@ -32,6 +32,7 @@ type minimalDoc struct {
 func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]DiscoveredApp, error) {
 	var apps []DiscoveredApp
 	seen := map[string]bool{} // deduplicate by RootPath
+	var filesScanned int
 
 	for _, root := range paths {
 		abs, err := filepath.Abs(root)
@@ -111,6 +112,7 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 			if isExcluded(path, cfg.Discovery.Exclude) {
 				return nil
 			}
+			filesScanned++
 
 			dir := filepath.Dir(path)
 
@@ -144,6 +146,7 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 		}
 	}
 
+	log.Info().Int("files", filesScanned).Int("apps", len(apps)).Msg("discovery complete")
 	return apps, nil
 }
 
