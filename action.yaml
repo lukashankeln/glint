@@ -51,13 +51,13 @@ runs:
       with:
         go-version: ${{ inputs.go-version }}
 
-    - name: Restore glint cache
+    - name: Cache glint binary
       id: cache-glint
-      uses: actions/cache/restore@v4
+      uses: actions/cache@v4
       with:
-        path: ${{ runner.tool_cache }}/glint
+        path: ~/go/bin/glint
         key: glint-${{ inputs.version }}-${{ runner.os }}-${{ runner.arch }}
-        
+
     - name: Install glint
       if: steps.cache-glint.outputs.cache-hit != 'true'
       shell: bash
@@ -68,23 +68,11 @@ runs:
 
         echo "Installing glint ${VERSION}..." ;
 
-        GOBIN="${{ runner.tool_cache }}/glint" go install
-        "github.com/lukashankeln/glint/cmd/glint@${VERSION}"
+        go install "github.com/lukashankeln/glint/cmd/glint@${VERSION}"
         >/tmp/glint-install.log 2>&1 || { cat /tmp/glint-install.log; exit 1; }
         ;
 
-        echo "Installed: $("${{ runner.tool_cache }}/glint/glint" version)"
-
-    - name: Save glint cache
-      if: steps.cache-glint.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v4
-      with:
-        path: ${{ runner.tool_cache }}/glint
-        key: glint-${{ inputs.version }}-${{ runner.os }}-${{ runner.arch }}
-
-    - name: Add glint to PATH
-      shell: bash
-      run: echo "${{ runner.tool_cache }}/glint" >> "$GITHUB_PATH"
+        echo "Installed: $(~/go/bin/glint version)"
 
     - name: Run glint
       id: lint
