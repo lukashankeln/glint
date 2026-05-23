@@ -3,6 +3,17 @@
   "packages": {
     ".": {
       "release-type": "go",
+      "extra-files": [
+        {
+          "type": "yaml",
+          "path": "action.yaml",
+          "jsonpath": "$.inputs.version.default"
+        },
+        {
+          "type": "generic",
+          "path": "internal/version/version.go"
+        }
+      ],
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": true,
       "changelog-sections": [
