@@ -113,7 +113,8 @@ func writeGitHubActions(w io.Writer, violations []rules.Violation) error {
 		}
 
 		// Escape GitHub annotation message characters.
-		msg := strings.ReplaceAll(v.Message, "%", "%25")
+		raw := fmt.Sprintf("%s (%s): %s  [%s]", resource, v.APIVersion, v.Message, v.RuleID)
+		msg := strings.ReplaceAll(raw, "%", "%25")
 		msg = strings.ReplaceAll(msg, "\r", "%0D")
 		msg = strings.ReplaceAll(msg, "\n", "%0A")
 		title := fmt.Sprintf("%s (%s) [%s]", resource, v.APIVersion, v.RuleID)
