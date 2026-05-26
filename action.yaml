@@ -5,7 +5,7 @@ inputs:
   version:
     description: glint version to install (e.g. v0.2.0)
     required: false
-    default: 0.1.7
+    default: 0.1.8
   go-version:
     description: 'Go toolchain version used to compile glint (default: matches go.mod)'
     required: false
@@ -47,12 +47,12 @@ runs:
   using: composite
   steps:
     - name: Set up Go
-      uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+      uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
       with:
         go-version: ${{ inputs.go-version }}
     - name: Cache glint binary
       id: cache-glint
-      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
       with:
         path: ~/go/bin/glint
         key: glint-${{ inputs.version }}-${{ runner.os }}-${{ runner.arch }}
@@ -99,7 +99,8 @@ runs:
         exit $EXIT_CODE
     - name: Upload SARIF to GitHub Security
       if: inputs.upload-sarif == 'true' && always()
-      uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
+      uses: >-
+        github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa
       with:
         sarif_file: ${{ inputs.sarif-file }}
         category: glint

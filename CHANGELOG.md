@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.8](https://github.com/lukashankeln/glint/compare/v0.1.7...v0.1.8) (2026-05-26)
+
+
+### Bug Fixes
+
+* improve error logging for github ([3befba5](https://github.com/lukashankeln/glint/commit/3befba5c8d4cee8ed7c94a4d1de8e196ad2ff2f3))
+* upgrade github action dependencies and pin versions ([efc23f3](https://github.com/lukashankeln/glint/commit/efc23f3b29da17fc8be3cf4eb1c6f89c5fae11fc))
+
 ## [0.1.7](https://github.com/lukashankeln/glint/compare/v0.1.6...v0.1.7) (2026-05-23)
 
 
