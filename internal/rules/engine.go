@@ -125,25 +125,20 @@ func (e *Engine) Evaluate(manifests []manifest.Manifest) []Violation {
 		violations []Violation
 	}
 
-	workers := runtime.NumCPU()
-	if workers > len(manifests) {
-		workers = len(manifests)
-	}
+	workers := min(runtime.NumCPU(), len(manifests))
 
 	jobs := make(chan int, len(manifests))
 	results := make(chan result, len(manifests))
 
 	var wg sync.WaitGroup
 	for range workers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for idx := range jobs {
 				m := manifests[idx]
 				vs := e.evaluateManifest(m)
 				results <- result{idx: idx, violations: vs}
 			}
-		}()
+		})
 	}
 
 	for i := range manifests {

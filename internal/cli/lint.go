@@ -18,11 +18,11 @@ import (
 
 func newLintCmd() *cobra.Command {
 	var (
-		onlyRules  string
-		skipRules  string
-		format     string
-		failOn     string
-		output     string
+		onlyRules   string
+		skipRules   string
+		format      string
+		failOn      string
+		output      string
 		outputJSON  string
 		outputSARIF string
 	)
@@ -188,7 +188,7 @@ func filterViolations(violations []rules.Violation, onlyRules, skipRules string)
 
 func splitCSV(s string) map[string]bool {
 	m := map[string]bool{}
-	for _, p := range strings.Split(s, ",") {
+	for p := range strings.SplitSeq(s, ",") {
 		p = strings.TrimSpace(p)
 		if p != "" {
 			m[p] = true
@@ -200,7 +200,7 @@ func splitCSV(s string) map[string]bool {
 // splitCSV2 returns a slice (preserving order) rather than a set.
 func splitCSV2(s string) []string {
 	var out []string
-	for _, p := range strings.Split(s, ",") {
+	for p := range strings.SplitSeq(s, ",") {
 		p = strings.TrimSpace(p)
 		if p != "" {
 			out = append(out, p)
