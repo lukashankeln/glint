@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.9](https://github.com/lukashankeln/glint/compare/v0.1.8...v0.1.9) (2026-06-03)
+
+
+### Bug Fixes
+
+* apply go fix results ([b412b02](https://github.com/lukashankeln/glint/commit/b412b02eb5956562c152769de11d03f8d5e96567))
+
 ## [0.1.8](https://github.com/lukashankeln/glint/compare/v0.1.7...v0.1.8) (2026-05-26)
 
 
