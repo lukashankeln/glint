@@ -86,7 +86,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write   # for SARIF upload to Security tab
+      security-events: write  # for SARIF upload to Security tab
+      actions: read           # required by codeql-action/upload-sarif
 
     steps:
       - uses: actions/checkout@v4
