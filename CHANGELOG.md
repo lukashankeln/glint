@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.10](https://github.com/lukashankeln/glint/compare/v0.1.9...v0.1.10) (2026-06-04)
+
+
+### Features
+
+* **deps:** update module helm.sh/helm/v3 to v3.21.0 ([471a2c8](https://github.com/lukashankeln/glint/commit/471a2c8f69730a5be8c2c07513eaf3d6d446b378))
+
 ## [0.1.9](https://github.com/lukashankeln/glint/compare/v0.1.8...v0.1.9) (2026-06-03)
 
 
