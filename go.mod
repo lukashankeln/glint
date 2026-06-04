@@ -3,7 +3,7 @@ module github.com/lukashankeln/glint
 go 1.25.3
 
 require (
-	github.com/Masterminds/semver/v3 v3.4.0
+	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/google/cel-go v0.28.1
 	github.com/spf13/cobra v1.10.2
