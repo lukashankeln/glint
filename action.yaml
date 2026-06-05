@@ -9,7 +9,7 @@ inputs:
   go-version:
     description: 'Go toolchain version used to compile glint (default: matches go.mod)'
     required: false
-    default: '1.25'
+    default: '1.26'
   config:
     description: Path to glint.yaml config file
     required: false
