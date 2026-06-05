@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.11](https://github.com/lukashankeln/glint/compare/v0.1.10...v0.1.11) (2026-06-05)
+
+
+### Features
+
+* migrate to helm v4 ([e26dedc](https://github.com/lukashankeln/glint/commit/e26dedc02cc9e18e254ec94fd9865885cdf48952))
+
 ## [0.1.10](https://github.com/lukashankeln/glint/compare/v0.1.9...v0.1.10) (2026-06-04)
 
 
