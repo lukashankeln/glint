@@ -5,53 +5,53 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"sigs.k8s.io/yaml"
 )
 
 // fluxHelmRepository is a minimal representation of a Flux HelmRepository CRD.
 type fluxHelmRepository struct {
 	Metadata struct {
-		Name      string `yaml:"name"`
-		Namespace string `yaml:"namespace"`
-	} `yaml:"metadata"`
+		Name      string `json:"name"`
+		Namespace string `json:"namespace"`
+	} `json:"metadata"`
 	Spec struct {
-		URL string `yaml:"url"`
-	} `yaml:"spec"`
+		URL string `json:"url"`
+	} `json:"spec"`
 }
 
 // fluxHelmRelease is a minimal representation of a Flux HelmRelease CRD.
 type fluxHelmRelease struct {
 	Metadata struct {
-		Name      string `yaml:"name"`
-		Namespace string `yaml:"namespace"`
-	} `yaml:"metadata"`
+		Name      string `json:"name"`
+		Namespace string `json:"namespace"`
+	} `json:"metadata"`
 	Spec struct {
 		Chart struct {
 			Spec struct {
-				Chart     string `yaml:"chart"`   // local path or chart name
-				Version   string `yaml:"version"` // chart version (for remote)
+				Chart     string `json:"chart"`   // local path or chart name
+				Version   string `json:"version"` // chart version (for remote)
 				SourceRef struct {
-					Kind      string `yaml:"kind"`
-					Name      string `yaml:"name"`
-					Namespace string `yaml:"namespace"`
-				} `yaml:"sourceRef"`
-			} `yaml:"spec"`
-		} `yaml:"chart"`
-		TargetNamespace string         `yaml:"targetNamespace"`
-		Values          map[string]any `yaml:"values"`
-	} `yaml:"spec"`
+					Kind      string `json:"kind"`
+					Name      string `json:"name"`
+					Namespace string `json:"namespace"`
+				} `json:"sourceRef"`
+			} `json:"spec"`
+		} `json:"chart"`
+		TargetNamespace string         `json:"targetNamespace"`
+		Values          map[string]any `json:"values"`
+	} `json:"spec"`
 }
 
 // fluxKustomization is a minimal representation of a Flux Kustomization CRD.
 type fluxKustomization struct {
 	Metadata struct {
-		Name      string `yaml:"name"`
-		Namespace string `yaml:"namespace"`
-	} `yaml:"metadata"`
+		Name      string `json:"name"`
+		Namespace string `json:"namespace"`
+	} `json:"metadata"`
 	Spec struct {
-		Path            string `yaml:"path"`
-		TargetNamespace string `yaml:"targetNamespace"`
-	} `yaml:"spec"`
+		Path            string `json:"path"`
+		TargetNamespace string `json:"targetNamespace"`
+	} `json:"spec"`
 }
 
 // parseFluxHelmRepository extracts the key ("namespace/name") and URL from a

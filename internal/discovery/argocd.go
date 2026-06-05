@@ -7,32 +7,32 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"sigs.k8s.io/yaml"
 )
 
 // argoApplication is a minimal representation of an ArgoCD Application CRD.
 type argoApplication struct {
 	Metadata struct {
-		Name      string `yaml:"name"`
-		Namespace string `yaml:"namespace"`
-	} `yaml:"metadata"`
+		Name      string `json:"name"`
+		Namespace string `json:"namespace"`
+	} `json:"metadata"`
 	Spec struct {
 		Source struct {
-			RepoURL        string `yaml:"repoURL"`
-			Path           string `yaml:"path"`
-			Chart          string `yaml:"chart"`
-			TargetRevision string `yaml:"targetRevision"`
+			RepoURL        string `json:"repoURL"`
+			Path           string `json:"path"`
+			Chart          string `json:"chart"`
+			TargetRevision string `json:"targetRevision"`
 			Helm           struct {
-				ReleaseName  string         `yaml:"releaseName"`
-				ValueFiles   []string       `yaml:"valueFiles"`
-				Values       string         `yaml:"values"`       // inline YAML string
-				ValuesObject map[string]any `yaml:"valuesObject"` // inline YAML object (takes precedence over Values)
-			} `yaml:"helm"`
-		} `yaml:"source"`
+				ReleaseName  string         `json:"releaseName"`
+				ValueFiles   []string       `json:"valueFiles"`
+				Values       string         `json:"values"`
+				ValuesObject map[string]any `json:"valuesObject"`
+			} `json:"helm"`
+		} `json:"source"`
 		Destination struct {
-			Namespace string `yaml:"namespace"`
-		} `yaml:"destination"`
-	} `yaml:"spec"`
+			Namespace string `json:"namespace"`
+		} `json:"destination"`
+	} `json:"spec"`
 }
 
 // parseArgoCDApplication converts an ArgoCD Application document (already

@@ -7,11 +7,12 @@ import (
 	"os"
 	"strings"
 
-	"helm.sh/helm/v3/pkg/action"
-	"helm.sh/helm/v3/pkg/chart/loader"
-	"helm.sh/helm/v3/pkg/chartutil"
-	helmenv "helm.sh/helm/v3/pkg/cli"
-	"helm.sh/helm/v3/pkg/registry"
+	"helm.sh/helm/v4/pkg/action"
+	chartutil "helm.sh/helm/v4/pkg/chart/common"
+	"helm.sh/helm/v4/pkg/chart/loader"
+	helmenv "helm.sh/helm/v4/pkg/cli"
+	ri "helm.sh/helm/v4/pkg/release"
+	"helm.sh/helm/v4/pkg/registry"
 
 	"github.com/lukashankeln/glint/internal/config"
 	"github.com/lukashankeln/glint/internal/discovery"
@@ -44,12 +45,7 @@ func (r *HelmRenderer) Render(ctx context.Context, app discovery.DiscoveredApp) 
 func (r *HelmRenderer) renderSDK(ctx context.Context, app discovery.DiscoveredApp) ([]manifest.Manifest, error) {
 	settings := helmenv.New()
 
-	actionCfg := new(action.Configuration)
-	if err := actionCfg.Init(nil, namespace(app), "memory", func(format string, v ...any) {
-		slog.Debug(fmt.Sprintf("[helm] "+format, v...))
-	}); err != nil {
-		return nil, fmt.Errorf("helm action config init: %w", err)
-	}
+	actionCfg := action.NewConfiguration()
 
 	// Always wire up an OCI registry client so oci:// chart URLs work.
 	registryClient, err := registry.NewClient()
@@ -59,8 +55,7 @@ func (r *HelmRenderer) renderSDK(ctx context.Context, app discovery.DiscoveredAp
 	actionCfg.RegistryClient = registryClient
 
 	install := action.NewInstall(actionCfg)
-	install.DryRun = true
-	install.ClientOnly = true
+	install.DryRunStrategy = action.DryRunClient
 	install.ReleaseName = releaseName(app)
 	install.Namespace = namespace(app)
 	install.IncludeCRDs = r.cfg.Render.Helm.IncludeCRDs
@@ -113,12 +108,16 @@ func (r *HelmRenderer) renderSDK(ctx context.Context, app discovery.DiscoveredAp
 		return nil, fmt.Errorf("building values for %q: %w", app.Name, err)
 	}
 
-	rel, err := install.RunWithContext(ctx, ch, vals)
+	relResult, err := install.RunWithContext(ctx, ch, vals)
 	if err != nil {
 		return nil, fmt.Errorf("helm template %q: %w", app.Name, err)
 	}
 
-	rendered := rel.Manifest
+	relAccessor, err := ri.NewAccessor(relResult)
+	if err != nil {
+		return nil, fmt.Errorf("accessing helm release: %w", err)
+	}
+	rendered := relAccessor.Manifest()
 	if rendered == "" {
 		return nil, nil
 	}
@@ -142,7 +141,7 @@ func (r *HelmRenderer) buildValues(app discovery.DiscoveredApp) (map[string]any,
 			slog.Warn("failed to parse values file, skipping", "file", vf, "err", err)
 			continue
 		}
-		base = mergeValues(base, vals.AsMap())
+		base = mergeValues(base, vals)
 	}
 
 	// 2. Inline values (spec.values in HelmRelease).
