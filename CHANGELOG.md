@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.12](https://github.com/lukashankeln/glint/compare/v0.1.11...v0.1.12) (2026-06-05)
+
+
+### Bug Fixes
+
+* github action should use go 1.26 as defualt ([f1d2ec6](https://github.com/lukashankeln/glint/commit/f1d2ec6063b4d20d52298bb4cc718b43b30985b7))
+
 ## [0.1.11](https://github.com/lukashankeln/glint/compare/v0.1.10...v0.1.11) (2026-06-05)
 
 
