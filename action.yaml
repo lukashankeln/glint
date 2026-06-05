@@ -5,7 +5,7 @@ inputs:
   version:
     description: glint version to install (e.g. v0.2.0)
     required: false
-    default: 0.1.11
+    default: 0.1.12
   go-version:
     description: 'Go toolchain version used to compile glint (default: matches go.mod)'
     required: false
