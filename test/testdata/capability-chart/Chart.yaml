@@ -1,0 +1,6 @@
+apiVersion: v2
+name: capability-chart
+description: Chart that gates a resource on an extra API version capability
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

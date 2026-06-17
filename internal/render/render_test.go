@@ -51,6 +51,36 @@ func TestHelmRenderer_LocalChart(t *testing.T) {
 	assert.True(t, hasExpectedKind, "expected at least one k8s resource kind, got: %v", kinds)
 }
 
+func TestHelmRenderer_APIVersions(t *testing.T) {
+	chartPath := testdataPath("capability-chart")
+	app := discovery.DiscoveredApp{
+		Name:        "capability-chart",
+		Framework:   discovery.FrameworkPlain,
+		Renderer:    discovery.RendererHelm,
+		RootPath:    chartPath,
+		ReleaseName: "capability-chart",
+		Namespace:   "default",
+	}
+
+	// Without the extra API version advertised, the chart hard-fails its
+	// capability guard (mirrors the Traefik ServiceMonitor failure).
+	cfg := defaultCfg()
+	_, err := New(app, cfg).Render(context.Background(), app)
+	require.Error(t, err, "expected render to fail when monitoring.coreos.com/v1 is not advertised")
+
+	// Advertising it via config lets the chart render the ServiceMonitor.
+	cfg = defaultCfg()
+	cfg.Render.Helm.APIVersions = []string{"monitoring.coreos.com/v1"}
+	manifests, err := New(app, cfg).Render(context.Background(), app)
+	require.NoError(t, err)
+
+	kinds := make(map[string]bool)
+	for _, m := range manifests {
+		kinds[m.Kind] = true
+	}
+	assert.True(t, kinds["ServiceMonitor"], "expected a ServiceMonitor, got: %v", kinds)
+}
+
 func TestKustomizeRenderer_Base(t *testing.T) {
 	basePath := testdataPath("kustomize-overlay/base")
 	app := discovery.DiscoveredApp{
