@@ -1,0 +1,19 @@
+name: Docker
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    uses: kube-the-home/github-actions/.github/workflows/docker-build.yaml@cb85be74aea09666f090472a4dcb92dad3ed3680 # v1.4.0
+    with:
+      image: ghcr.io/lukashankeln/glint
+      tag: ${{ github.ref_name }}
+    secrets:
+      registry_password: ${{ secrets.GITHUB_TOKEN }}
