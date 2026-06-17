@@ -24,7 +24,7 @@ inputs:
     default: .
 runs:
   using: docker
-  image: docker://ghcr.io/lukashankeln/glint:v0.1.14
+  image: docker://ghcr.io/lukashankeln/glint:v0.1.14 # x-release-please-version
   args:
     - lint
     - ${{ inputs.paths }}

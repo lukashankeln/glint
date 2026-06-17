@@ -5,9 +5,8 @@
       "release-type": "go",
       "extra-files": [
         {
-          "type": "yaml",
-          "path": "action.yaml",
-          "jsonpath": "$.runs.image"
+          "type": "generic",
+          "path": "action.yaml"
         },
         {
           "type": "generic",
