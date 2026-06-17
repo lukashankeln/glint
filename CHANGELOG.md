@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.13](https://github.com/lukashankeln/glint/compare/v0.1.12...v0.1.13) (2026-06-17)
+
+
+### Features
+
+* adding dockerfile and build action ([83931aa](https://github.com/lukashankeln/glint/commit/83931aa88f80b170734657a0a02366a098823193)), closes [#25](https://github.com/lukashankeln/glint/issues/25)
+
+
+### Bug Fixes
+
+* **deps:** update module helm.sh/helm/v4 to v4.2.1 ([137abd3](https://github.com/lukashankeln/glint/commit/137abd342295774510c4a19b48e476ff5bc3b2dc))
+
 ## [0.1.12](https://github.com/lukashankeln/glint/compare/v0.1.11...v0.1.12) (2026-06-05)
 
 
