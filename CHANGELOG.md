@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.16](https://github.com/lukashankeln/glint/compare/v0.1.15...v0.1.16) (2026-06-17)
+
+
+### Bug Fixes
+
+* **deps:** update kube-the-home/github-actions action to v1.4.1 ([d740b5d](https://github.com/lukashankeln/glint/commit/d740b5dfbcb3ca79cbe51a28b73a9b6d32e82de1))
+* **render:** apply configured helm api_versions ([2a8a926](https://github.com/lukashankeln/glint/commit/2a8a926ee8da58b83f3a08ba600c832dcb97215c))
+
 ## [0.1.15](https://github.com/lukashankeln/glint/compare/v0.1.14...v0.1.15) (2026-06-17)
 
 
