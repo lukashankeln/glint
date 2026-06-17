@@ -68,6 +68,13 @@ func (r *HelmRenderer) renderSDK(ctx context.Context, app discovery.DiscoveredAp
 		}
 	}
 
+	// Advertise extra API versions so charts that gate resources on
+	// .Capabilities.APIVersions.Has (e.g. CRDs installed by other apps, such
+	// as monitoring.coreos.com/v1 for ServiceMonitors) render without error.
+	if len(r.cfg.Render.Helm.APIVersions) > 0 {
+		install.APIVersions = append(install.APIVersions, r.cfg.Render.Helm.APIVersions...)
+	}
+
 	var chartPath string
 	if app.RootPath != "" {
 		// Local chart
