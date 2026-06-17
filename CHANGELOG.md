@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.15](https://github.com/lukashankeln/glint/compare/v0.1.14...v0.1.15) (2026-06-17)
+
+
+### Features
+
+* use docker based action to improve execution speed ([11e0a14](https://github.com/lukashankeln/glint/commit/11e0a143412c66448b59e261825c39c7bd23c832)), closes [#26](https://github.com/lukashankeln/glint/issues/26)
+
+
+### Bug Fixes
+
+* remove release type and only use config file ([5b6c5e3](https://github.com/lukashankeln/glint/commit/5b6c5e3336ed3f5000cb992a4641e71b97580598))
+* set release type to golang ([adb5dac](https://github.com/lukashankeln/glint/commit/adb5dac7c56776e5ed00faf6666e62c1ae3de965))
+* try generic version replace for image tag ([72d7d5a](https://github.com/lukashankeln/glint/commit/72d7d5a68b261c66dd34d02164965905efa61bb6))
+
 ## [0.1.14](https://github.com/lukashankeln/glint/compare/v0.1.13...v0.1.14) (2026-06-17)
 
 
