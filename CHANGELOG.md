@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.14](https://github.com/lukashankeln/glint/compare/v0.1.13...v0.1.14) (2026-06-17)
+
+
+### Bug Fixes
+
+* release please permissions ([c8a0618](https://github.com/lukashankeln/glint/commit/c8a06186c916f24a61c42dd26f725f27d1b17340))
+* use shared variant of release please ([85b9ed9](https://github.com/lukashankeln/glint/commit/85b9ed9367ee1e866421dba68145283449eb2bbf))
+
 ## [0.1.13](https://github.com/lukashankeln/glint/compare/v0.1.12...v0.1.13) (2026-06-17)
 
 
