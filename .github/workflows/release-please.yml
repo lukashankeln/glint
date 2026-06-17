@@ -9,11 +9,10 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    uses: kube-the-home/github-actions/.github/workflows/release-please.yaml@cb85be74aea09666f090472a4dcb92dad3ed3680 # v1.4.0
+    uses: kube-the-home/github-actions/.github/workflows/release-please.yaml@e698429ae3d6096c14d7eb6d2ffef1da8c26cdea # v1.4.1
     with:
       config_file: release-please-config.json
       manifest_file: .release-please-manifest.json
-      release_type: go
     secrets:
       APP_ID: ${{ secrets.RELEASE_APP_ID }}
       APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PEM }}
