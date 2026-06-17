@@ -7,7 +7,7 @@
         {
           "type": "yaml",
           "path": "action.yaml",
-          "jsonpath": "$.inputs.version.default"
+          "jsonpath": "$.runs.image"
         },
         {
           "type": "generic",
