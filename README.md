@@ -91,31 +91,29 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - uses: lukashankeln/glint@v0.1.2
+      - uses: lukashankeln/glint@v0.1.16
         with:
           fail-on: "error"
-          upload-sarif: "true"
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: glint-results.sarif
 ```
 
 **2. That's it.** glint will:
 - Post inline PR annotations for every violation
-- Upload SARIF results to the Security tab for persistent tracking
+- Write SARIF results to `glint-results.sarif` for upload to the Security tab
 - Fail the workflow on `error`-severity violations
 
 **Action inputs:**
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `version` | `latest` | glint version tag to install |
-| `go-version` | `1.25` | Go toolchain version |
 | `config` | `glint.yaml` | Path to config file |
 | `format` | `github-actions` | Output format |
 | `fail-on` | `error` | Severities that fail the step |
-| `upload-sarif` | `true` | Upload to GitHub Security tab |
 | `sarif-file` | `glint-results.sarif` | SARIF output path |
 | `paths` | `.` | Space-separated paths to lint |
-
-**Action outputs:** `violations` (total count), `errors` (error count)
 
 ---
 
