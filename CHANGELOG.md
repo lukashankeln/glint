@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.17](https://github.com/lukashankeln/glint/compare/v0.1.16...v0.1.17) (2026-06-20)
+
+
+### Bug Fixes
+
+* **deps:** update kube-the-home/github-actions action to v1.4.2 ([0aea7bc](https://github.com/lukashankeln/glint/commit/0aea7bc5e7be51dc3d2d2de5d95aea1d88730fcf))
+* **deps:** update kube-the-home/github-actions action to v1.4.3 ([b754efe](https://github.com/lukashankeln/glint/commit/b754efe3f3f33002e84b5a1d67a9c10e0b846530))
+* **deps:** update module helm.sh/helm/v4 to v4.2.2 ([5ebd44d](https://github.com/lukashankeln/glint/commit/5ebd44d44a26a575477d66db9e2cb6faa2e1cc70))
+
 ## [0.1.16](https://github.com/lukashankeln/glint/compare/v0.1.15...v0.1.16) (2026-06-17)
 
 
