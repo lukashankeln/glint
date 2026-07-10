@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.1.17](https://github.com/lukashankeln/glint/compare/v0.1.16...v0.1.17) (2026-07-10)
+
+
+### Features
+
+* **deps:** update module github.com/google/cel-go to v0.29.1 ([3308272](https://github.com/lukashankeln/glint/commit/3308272797c4e95c4fda239f9d9371ccd1ba4a7c))
+
+
+### Bug Fixes
+
+* **deps:** update golang docker tag to v1.26.5 ([4844625](https://github.com/lukashankeln/glint/commit/4844625b1ba7de4f412d503b442af0572f118113))
+* **deps:** update kube-the-home/github-actions action to v1.4.2 ([0aea7bc](https://github.com/lukashankeln/glint/commit/0aea7bc5e7be51dc3d2d2de5d95aea1d88730fcf))
+* **deps:** update kube-the-home/github-actions action to v1.4.3 ([b754efe](https://github.com/lukashankeln/glint/commit/b754efe3f3f33002e84b5a1d67a9c10e0b846530))
+* **deps:** update kube-the-home/github-actions action to v1.4.7 ([6e584ad](https://github.com/lukashankeln/glint/commit/6e584ade8efe126b7c1703ab88b81b868727b2aa))
+* **deps:** update kube-the-home/github-actions action to v1.4.8 ([c882bf0](https://github.com/lukashankeln/glint/commit/c882bf039839d46dcc04c4c488ed58d612041f5d))
+* **deps:** update module github.com/google/cel-go to v0.29.2 ([3ec3290](https://github.com/lukashankeln/glint/commit/3ec3290d0f827a50e921b87e06be546d849e8f65))
+* **deps:** update module helm.sh/helm/v4 to v4.2.2 ([5ebd44d](https://github.com/lukashankeln/glint/commit/5ebd44d44a26a575477d66db9e2cb6faa2e1cc70))
+* **deps:** update module helm.sh/helm/v4 to v4.2.3 ([787ff70](https://github.com/lukashankeln/glint/commit/787ff70181a033891de873ac577c77f56507fca1))
+
 ## [0.1.16](https://github.com/lukashankeln/glint/compare/v0.1.15...v0.1.16) (2026-06-17)
 
 
