@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    uses: kube-the-home/github-actions/.github/workflows/docker-build.yaml@b67640d904b560a3a20f5cb94e6ddd5bfa955d65 # v1.4.10
+    uses: kube-the-home/github-actions/.github/workflows/docker-build.yaml@70b35bb255a89f5a9281934be8941da086031276 # v1.4.11
     with:
       image: ghcr.io/lukashankeln/glint
       tag: ${{ github.ref_name }}
