@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.2.0](https://github.com/lukashankeln/glint/compare/v0.1.16...v0.2.0) (2026-08-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* If a FluxCD or ArgoCD file cannot be parsed during discovery this will now result in validation failure. The reasoning being that we are not able to validate it at all.
+
+### Features
+
+* **deps:** update module github.com/google/cel-go to v0.29.1 ([3308272](https://github.com/lukashankeln/glint/commit/3308272797c4e95c4fda239f9d9371ccd1ba4a7c))
+* **deps:** update module github.com/google/cel-go to v0.30.0 ([dcbca5d](https://github.com/lukashankeln/glint/commit/dcbca5d39ca4f9977026d7a46864ed7c149ee0cd))
+* fail validation if a possible gitops application could not be parsed in discovery ([b2cd6ce](https://github.com/lukashankeln/glint/commit/b2cd6ced6267e1d19d453249c4f0018a33a5d43e))
+
+
+### Bug Fixes
+
+* **deps:** update golang docker tag to v1.26.5 ([4844625](https://github.com/lukashankeln/glint/commit/4844625b1ba7de4f412d503b442af0572f118113))
+* **deps:** update kube-the-home/github-actions action to v1.4.10 ([d2669b6](https://github.com/lukashankeln/glint/commit/d2669b623363164bdfff01b26a18ff1996a5d999))
+* **deps:** update kube-the-home/github-actions action to v1.4.11 ([49a8174](https://github.com/lukashankeln/glint/commit/49a817433c7acf930c770ebcbfc2361c2b870775))
+* **deps:** update kube-the-home/github-actions action to v1.4.2 ([0aea7bc](https://github.com/lukashankeln/glint/commit/0aea7bc5e7be51dc3d2d2de5d95aea1d88730fcf))
+* **deps:** update kube-the-home/github-actions action to v1.4.3 ([b754efe](https://github.com/lukashankeln/glint/commit/b754efe3f3f33002e84b5a1d67a9c10e0b846530))
+* **deps:** update kube-the-home/github-actions action to v1.4.7 ([6e584ad](https://github.com/lukashankeln/glint/commit/6e584ade8efe126b7c1703ab88b81b868727b2aa))
+* **deps:** update kube-the-home/github-actions action to v1.4.8 ([c882bf0](https://github.com/lukashankeln/glint/commit/c882bf039839d46dcc04c4c488ed58d612041f5d))
+* **deps:** update module github.com/google/cel-go to v0.29.2 ([3ec3290](https://github.com/lukashankeln/glint/commit/3ec3290d0f827a50e921b87e06be546d849e8f65))
+* **deps:** update module helm.sh/helm/v4 to v4.2.2 ([5ebd44d](https://github.com/lukashankeln/glint/commit/5ebd44d44a26a575477d66db9e2cb6faa2e1cc70))
+* **deps:** update module helm.sh/helm/v4 to v4.2.3 ([787ff70](https://github.com/lukashankeln/glint/commit/787ff70181a033891de873ac577c77f56507fca1))
+* log parsing errors as errors in discovery ([b3f5caf](https://github.com/lukashankeln/glint/commit/b3f5caf5867614d5872f7cf6ab8449c5b2dc603b))
+
 ## [0.1.16](https://github.com/lukashankeln/glint/compare/v0.1.15...v0.1.16) (2026-06-17)
 
 
