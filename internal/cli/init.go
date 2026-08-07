@@ -138,7 +138,7 @@ func detectDominantFramework(cmd *cobra.Command, root string) string {
 	}
 	cfg.Discovery.Paths = []string{root}
 
-	apps, err := discovery.Discover(cmd.Context(), []string{root}, cfg)
+	apps, _, err := discovery.Discover(cmd.Context(), []string{root}, cfg)
 	if err != nil || len(apps) == 0 {
 		return "plain"
 	}

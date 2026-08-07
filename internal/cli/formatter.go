@@ -77,15 +77,28 @@ func writeOutput(w io.Writer, violations []rules.Violation, format string) error
 
 func writeText(w io.Writer, violations []rules.Violation) error {
 	for _, v := range violations {
-		ns := v.ResourceNS
-		resource := v.ResourceKind + "/" + v.ResourceName
-		if ns != "" {
-			resource = v.ResourceKind + "/" + ns + "/" + v.ResourceName
+		source := v.Source
+		if source == "" {
+			source = "cel"
 		}
-		_, err := fmt.Fprintf(w, "[%s] cel  %s (%s): %s  [%s]\n",
+
+		var location string
+		if v.ResourceKind == "" && v.ResourceName == "" {
+			// No resource context — use the file path directly.
+			location = v.FilePath
+		} else {
+			ns := v.ResourceNS
+			resource := v.ResourceKind + "/" + v.ResourceName
+			if ns != "" {
+				resource = v.ResourceKind + "/" + ns + "/" + v.ResourceName
+			}
+			location = resource + " (" + v.APIVersion + ")"
+		}
+
+		_, err := fmt.Fprintf(w, "[%s] %s  %s: %s  [%s]\n",
 			strings.ToUpper(string(v.Severity)),
-			resource,
-			v.APIVersion,
+			source,
+			location,
 			v.Message,
 			v.RuleID,
 		)
@@ -107,17 +120,24 @@ func writeGitHubActions(w io.Writer, violations []rules.Violation) error {
 		}
 
 		file := v.FilePath
-		resource := v.ResourceKind + "/" + v.ResourceName
-		if v.ResourceNS != "" {
-			resource = v.ResourceKind + "/" + v.ResourceNS + "/" + v.ResourceName
+
+		var location string
+		if v.ResourceKind == "" && v.ResourceName == "" {
+			location = file
+		} else {
+			resource := v.ResourceKind + "/" + v.ResourceName
+			if v.ResourceNS != "" {
+				resource = v.ResourceKind + "/" + v.ResourceNS + "/" + v.ResourceName
+			}
+			location = resource + " (" + v.APIVersion + ")"
 		}
 
 		// Escape GitHub annotation message characters.
-		raw := fmt.Sprintf("%s (%s): %s  [%s]", resource, v.APIVersion, v.Message, v.RuleID)
+		raw := fmt.Sprintf("%s: %s  [%s]", location, v.Message, v.RuleID)
 		msg := strings.ReplaceAll(raw, "%", "%25")
 		msg = strings.ReplaceAll(msg, "\r", "%0D")
 		msg = strings.ReplaceAll(msg, "\n", "%0A")
-		title := fmt.Sprintf("%s (%s) [%s]", resource, v.APIVersion, v.RuleID)
+		title := fmt.Sprintf("%s [%s]", location, v.RuleID)
 		title = strings.ReplaceAll(title, ",", "%2C")
 		title = strings.ReplaceAll(title, ":", "%3A")
 

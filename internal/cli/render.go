@@ -39,7 +39,7 @@ Use --output <dir> to write each app to <dir>/<appname>.yaml.`,
 				return fmt.Errorf("loading config: %w", err)
 			}
 
-			apps, err := discovery.Discover(cmd.Context(), paths, cfg)
+			apps, _, err := discovery.Discover(cmd.Context(), paths, cfg)
 			if err != nil {
 				return fmt.Errorf("discovery failed: %w", err)
 			}

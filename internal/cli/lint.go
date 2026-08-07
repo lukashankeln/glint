@@ -62,7 +62,7 @@ func newLintCmd() *cobra.Command {
 			}
 
 			// Discover apps.
-			apps, err := discovery.Discover(cmd.Context(), paths, cfg)
+			apps, parseErrors, err := discovery.Discover(cmd.Context(), paths, cfg)
 			if err != nil {
 				return fmt.Errorf("discovery failed: %w", err)
 			}
@@ -90,6 +90,18 @@ func newLintCmd() *cobra.Command {
 
 			// Evaluate rules.
 			violations := engine.Evaluate(allManifests)
+
+			// Files that were identified as GitOps CRDs but could not be parsed
+			// cannot be validated at all, so they are reported as errors.
+			for _, pe := range parseErrors {
+				violations = append(violations, rules.Violation{
+					RuleID:   "glint/parse-error",
+					Severity: rules.SeverityError,
+					Message:  fmt.Sprintf("file could not be parsed and cannot be validated: %s", pe.Message),
+					FilePath: pe.FilePath,
+					Source:   "discovery",
+				})
+			}
 
 			// Apply --only-rules / --skip-rules filters.
 			violations = filterViolations(violations, onlyRules, skipRules)

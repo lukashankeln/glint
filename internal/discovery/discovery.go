@@ -24,6 +24,7 @@ type fileResult struct {
 	helmRepos       map[string]string // namespace/name -> url
 	pendingReleases []pendingRelease
 	rawDir          string
+	parseErrors     []ParseError
 }
 
 // pendingRelease holds a raw Flux HelmRelease document whose sourceRef cannot
@@ -42,15 +43,16 @@ type pendingRelease struct {
 //   - ArgoCD Application CRDs
 //   - Flux HelmRelease / Kustomization CRDs
 //   - Raw YAML directories (directories with .yaml files that match none of the above)
-func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]DiscoveredApp, error) {
+func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]DiscoveredApp, []ParseError, error) {
 	var apps []DiscoveredApp
+	var parseErrors []ParseError
 	seen := map[string]bool{} // deduplicate by RootPath
 	var filesScanned int
 
 	for _, root := range paths {
 		abs, err := filepath.Abs(root)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		repoRoot := findRepoRoot(abs)
@@ -115,7 +117,7 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 			return nil
 		})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		// Phase 2: Parse all YAML files concurrently.
@@ -130,6 +132,8 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 		// Phase 4: Merge results into the app list.
 		for i := range fileResults {
 			fr := &fileResults[i]
+
+			parseErrors = append(parseErrors, fr.parseErrors...)
 
 			for _, app := range fr.apps {
 				dedupKey := app.RootPath
@@ -147,6 +151,7 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 				app, err := parseFluxHelmRelease(pr.raw, pr.repoRoot, pr.sourceFile, helmRepos)
 				if err != nil {
 					slog.Warn("failed to parse Flux HelmRelease", "file", pr.sourceFile, "err", err)
+					parseErrors = append(parseErrors, ParseError{FilePath: pr.sourceFile, Message: err.Error()})
 					continue
 				}
 				if app == nil {
@@ -174,8 +179,8 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 		}
 	}
 
-	slog.Info("discovery complete", "files", filesScanned, "apps", len(apps))
-	return apps, nil
+	slog.Info("discovery complete", "files", filesScanned, "apps", len(apps), "parseErrors", len(parseErrors))
+	return apps, parseErrors, nil
 }
 
 // parseFilesParallel reads and parses all YAML files concurrently using a
@@ -264,6 +269,7 @@ func parseFile(ctx context.Context, path, repoRoot string) fileResult {
 			app, err := parseArgoCDApplication(docBytes, repoRoot, path)
 			if err != nil {
 				slog.Warn("failed to parse ArgoCD Application", "file", path, "err", err)
+				result.parseErrors = append(result.parseErrors, ParseError{FilePath: path, Message: err.Error()})
 				continue
 			}
 			if app == nil {
@@ -295,6 +301,7 @@ func parseFile(ctx context.Context, path, repoRoot string) fileResult {
 				app, err := parseFluxKustomization(docBytes, repoRoot, path)
 				if err != nil {
 					slog.Warn("failed to parse Flux Kustomization", "file", path, "err", err)
+					result.parseErrors = append(result.parseErrors, ParseError{FilePath: path, Message: err.Error()})
 					continue
 				}
 				if app == nil {

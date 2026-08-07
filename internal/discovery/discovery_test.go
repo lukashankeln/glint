@@ -26,7 +26,7 @@ func defaultCfg() *config.Config {
 
 func TestDiscover_HelmChart(t *testing.T) {
 	path := testdataPath("argocd-helm-app")
-	apps, err := Discover(context.Background(), []string{path}, defaultCfg())
+	apps, _, err := Discover(context.Background(), []string{path}, defaultCfg())
 	require.NoError(t, err)
 
 	// Expect at least one Helm app (the chart at charts/frontend)
@@ -39,7 +39,7 @@ func TestDiscover_HelmChart(t *testing.T) {
 
 func TestDiscover_ArgoCDApplication(t *testing.T) {
 	path := testdataPath("argocd-helm-app")
-	apps, err := Discover(context.Background(), []string{path}, defaultCfg())
+	apps, _, err := Discover(context.Background(), []string{path}, defaultCfg())
 	require.NoError(t, err)
 
 	argoApps := filterByFramework(apps, FrameworkArgoCD)
@@ -51,7 +51,7 @@ func TestDiscover_ArgoCDApplication(t *testing.T) {
 
 func TestDiscover_FluxHelmRelease(t *testing.T) {
 	path := testdataPath("flux-helmrelease")
-	apps, err := Discover(context.Background(), []string{path}, defaultCfg())
+	apps, _, err := Discover(context.Background(), []string{path}, defaultCfg())
 	require.NoError(t, err)
 
 	fluxApps := filterByFramework(apps, FrameworkFlux)
@@ -63,7 +63,7 @@ func TestDiscover_FluxHelmRelease(t *testing.T) {
 
 func TestDiscover_KustomizeOverlay(t *testing.T) {
 	path := testdataPath("kustomize-overlay")
-	apps, err := Discover(context.Background(), []string{path}, defaultCfg())
+	apps, _, err := Discover(context.Background(), []string{path}, defaultCfg())
 	require.NoError(t, err)
 
 	kApps := filterByRenderer(apps, RendererKustomize)
@@ -77,7 +77,7 @@ func TestDiscover_KustomizeOverlay(t *testing.T) {
 
 func TestDiscover_RawYAML(t *testing.T) {
 	path := testdataPath("raw-yaml")
-	apps, err := Discover(context.Background(), []string{path}, defaultCfg())
+	apps, _, err := Discover(context.Background(), []string{path}, defaultCfg())
 	require.NoError(t, err)
 
 	rawApps := filterByRenderer(apps, RendererRaw)
@@ -89,7 +89,7 @@ func TestDiscover_ExcludePattern(t *testing.T) {
 	cfg := defaultCfg()
 	cfg.Discovery.Exclude = append(cfg.Discovery.Exclude, "**/overlays/**")
 
-	apps, err := Discover(context.Background(), []string{path}, cfg)
+	apps, _, err := Discover(context.Background(), []string{path}, cfg)
 	require.NoError(t, err)
 
 	// The production overlay should be excluded
@@ -101,7 +101,7 @@ func TestDiscover_ExcludePattern(t *testing.T) {
 
 func TestDiscover_NoDuplicates(t *testing.T) {
 	path := testdataPath("argocd-helm-app")
-	apps, err := Discover(context.Background(), []string{path}, defaultCfg())
+	apps, _, err := Discover(context.Background(), []string{path}, defaultCfg())
 	require.NoError(t, err)
 
 	rootPaths := make(map[string]int)
@@ -115,7 +115,7 @@ func TestDiscover_NoDuplicates(t *testing.T) {
 
 func TestDiscover_FluxRemoteHelmRelease(t *testing.T) {
 	path := testdataPath("flux-remote-helmrelease")
-	apps, err := Discover(context.Background(), []string{path}, defaultCfg())
+	apps, _, err := Discover(context.Background(), []string{path}, defaultCfg())
 	require.NoError(t, err)
 
 	fluxApps := filterByFramework(apps, FrameworkFlux)
@@ -143,7 +143,7 @@ func TestDiscover_ArgoCDApplicationDirIsRaw(t *testing.T) {
 	// Previously crdFound=true caused it to be excluded from rawDirs, so the
 	// Application YAML itself was never CEL-evaluated. Now it must appear as a raw app.
 	path := testdataPath("argocd-helm-app")
-	apps, err := Discover(context.Background(), []string{path}, defaultCfg())
+	apps, _, err := Discover(context.Background(), []string{path}, defaultCfg())
 	require.NoError(t, err)
 
 	// apps/frontend.yaml is an ArgoCD Application — its directory must also be a raw app.
@@ -164,7 +164,7 @@ func TestDiscover_ArgoCDApplicationDirIsRaw(t *testing.T) {
 
 func TestDiscover_ArgoCDApplicationSet(t *testing.T) {
 	path := testdataPath("argocd-appset")
-	apps, err := Discover(context.Background(), []string{path}, defaultCfg())
+	apps, _, err := Discover(context.Background(), []string{path}, defaultCfg())
 	require.NoError(t, err)
 
 	// ApplicationSets must not be expanded into ArgoCD DiscoveredApps.
@@ -187,7 +187,7 @@ func TestDiscover_ArgoCDApplicationSet(t *testing.T) {
 
 func TestDiscover_ArgoCDRemoteHelm(t *testing.T) {
 	path := testdataPath("argocd-remote-helm")
-	apps, err := Discover(context.Background(), []string{path}, defaultCfg())
+	apps, _, err := Discover(context.Background(), []string{path}, defaultCfg())
 	require.NoError(t, err)
 
 	argoApps := filterByFramework(apps, FrameworkArgoCD)

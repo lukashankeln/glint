@@ -66,3 +66,11 @@ type SourceRef struct {
 	Name string `json:"name,omitempty"`
 }
 
+// ParseError records a file that was identified as a GitOps CRD but could not
+// be fully parsed. These should be treated as validation errors because the
+// file cannot be evaluated at all.
+type ParseError struct {
+	FilePath string
+	Message  string
+}
+
