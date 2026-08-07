@@ -150,7 +150,7 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 			for _, pr := range fr.pendingReleases {
 				app, err := parseFluxHelmRelease(pr.raw, pr.repoRoot, pr.sourceFile, helmRepos)
 				if err != nil {
-					slog.Warn("failed to parse Flux HelmRelease", "file", pr.sourceFile, "err", err)
+					slog.Error("failed to parse Flux HelmRelease", "file", pr.sourceFile, "err", err)
 					parseErrors = append(parseErrors, ParseError{FilePath: pr.sourceFile, Message: err.Error()})
 					continue
 				}
@@ -268,7 +268,7 @@ func parseFile(ctx context.Context, path, repoRoot string) fileResult {
 			}
 			app, err := parseArgoCDApplication(docBytes, repoRoot, path)
 			if err != nil {
-				slog.Warn("failed to parse ArgoCD Application", "file", path, "err", err)
+				slog.Error("failed to parse ArgoCD Application", "file", path, "err", err)
 				result.parseErrors = append(result.parseErrors, ParseError{FilePath: path, Message: err.Error()})
 				continue
 			}
@@ -300,7 +300,7 @@ func parseFile(ctx context.Context, path, repoRoot string) fileResult {
 			case "kustomization":
 				app, err := parseFluxKustomization(docBytes, repoRoot, path)
 				if err != nil {
-					slog.Warn("failed to parse Flux Kustomization", "file", path, "err", err)
+					slog.Error("failed to parse Flux Kustomization", "file", path, "err", err)
 					result.parseErrors = append(result.parseErrors, ParseError{FilePath: path, Message: err.Error()})
 					continue
 				}
