@@ -2,7 +2,7 @@
 package cel
 
 import (
-	"github.com/google/cel-go/cel"
+	"cel.dev/cel-go/cel"
 )
 
 // NewEnv constructs the shared CEL environment with all variable declarations
