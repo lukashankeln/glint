@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.2.1](https://github.com/lukashankeln/glint/compare/v0.2.0...v0.2.1) (2026-10-02)
+
+
+### Features
+
+* **deps:** update golang docker tag to v1.27.0 ([8be53d8](https://github.com/lukashankeln/glint/commit/8be53d8c9c34c52c3e7aaea3aff06443e3e576ac))
+* **deps:** update module github.com/google/cel-go to v0.31.0 ([1290dfe](https://github.com/lukashankeln/glint/commit/1290dfe445e3475709794b85b243ae08ea0773fd))
+* **deps:** update module github.com/google/cel-go to v0.32.0 ([fa4691f](https://github.com/lukashankeln/glint/commit/fa4691ffb077f161762cf85240b06048bcc1304c))
+* **deps:** update module github.com/stretchr/testify to v1.12.1 ([404fb38](https://github.com/lukashankeln/glint/commit/404fb382ccfbc50f2736f4242b08556aef42fd82))
+* **deps:** update module helm.sh/helm/v4 to v4.3.0 ([ab71f09](https://github.com/lukashankeln/glint/commit/ab71f09f82b56d908c2418e0e846cd0357620440))
+
+
+### Bug Fixes
+
+* **deps:** update alpine docker tag to v3.24.2 ([f999036](https://github.com/lukashankeln/glint/commit/f999036bc867e9320d27594e449b69ea146fb080))
+* **deps:** update golang docker tag to v1.26.6 ([190b9a6](https://github.com/lukashankeln/glint/commit/190b9a641c3974c84cab5abb5dcc256d43ff5293))
+* **deps:** update golang docker tag to v1.27.1 ([7ae0cc0](https://github.com/lukashankeln/glint/commit/7ae0cc0e69f9254d0a0d791c8d312426dba5b9d4))
+* **deps:** update kube-the-home/github-actions action to v1.4.12 ([6573680](https://github.com/lukashankeln/glint/commit/6573680d038f87da34bbb1daa0527af2c6586178))
+* **deps:** update module github.com/bmatcuk/doublestar/v4 to v4.10.2 ([2c6b722](https://github.com/lukashankeln/glint/commit/2c6b72205c4b0239e3658d12088d222a6c444e0f))
+* **deps:** update module helm.sh/helm/v4 to v4.2.4 ([ae3a7fb](https://github.com/lukashankeln/glint/commit/ae3a7fbb9a11aa1246d66e1b194ea81857cc99d1))
+* **deps:** update module sigs.k8s.io/kustomize/api to v0.21.2 ([433cab0](https://github.com/lukashankeln/glint/commit/433cab05f4b103f0f4412c897d1dbca2e7c800e0))
+* **deps:** update module sigs.k8s.io/kustomize/kyaml to v0.21.2 ([1556f1e](https://github.com/lukashankeln/glint/commit/1556f1effc3c6eb36fb36da163c624e2fece41eb))
+* migrate cel-go import path to cel.dev/cel-go ([79d6a14](https://github.com/lukashankeln/glint/commit/79d6a144b5a446948c8619b055ead2a87d5b1e1a)), closes [#62](https://github.com/lukashankeln/glint/issues/62)
+
 ## [0.2.0](https://github.com/lukashankeln/glint/compare/v0.1.16...v0.2.0) (2026-08-07)
 
 
