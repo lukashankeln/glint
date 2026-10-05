@@ -190,6 +190,56 @@ See [`docs/writing-rules.md`](docs/writing-rules.md) for a full guide with examp
 
 ---
 
+## Plugins
+
+Plugins let any external tool participate in the lint pipeline and surface findings as native glint violations. They run after rendering, receive each app's manifests as YAML on stdin, and write violations as JSON to stdout.
+
+```yaml
+# glint.yaml
+plugins:
+  - name:    my-validator
+    command: ./scripts/validate.sh
+    args:    ["--strict"]
+```
+
+Plugin violations feed into the same output formatters, `fail_on` logic, and `--skip-rules`/`--only-rules` filters as CEL rules. The `source` field on each violation is set to the plugin name.
+
+**Plugin config fields:**
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `name` | required | Unique identifier for this plugin |
+| `command` | required | Executable to run |
+| `args` | `[]` | Arguments passed before manifest input |
+| `adapter` | — | Built-in adapter name (e.g. `kubeconform`) for third-party tools |
+| `severity` | — | Override severity for all violations from this plugin |
+| `input` | `stdin` | How manifests are passed: `stdin` or `file` (path appended to args) |
+| `timeout` | `30s` | Kill the plugin after this duration (e.g. `"60s"`, `"2m"`) |
+| `fail_on_error` | `false` | Treat non-zero plugin exit as a fatal lint error |
+| `env` | `{}` | Extra environment variables |
+
+**Native output protocol** — plugins without an adapter must write a JSON array to stdout:
+
+```json
+[
+  {
+    "rule_id":   "my-linter/check-name",
+    "severity":  "error",
+    "message":   "hostNetwork must not be true",
+    "file_path": "apps/api/deployment.yaml",
+    "resource": {
+      "kind":      "Deployment",
+      "name":      "api",
+      "namespace": "production"
+    }
+  }
+]
+```
+
+All fields except `rule_id`, `severity`, and `message` are optional.
+
+---
+
 ## CLI reference
 
 ```

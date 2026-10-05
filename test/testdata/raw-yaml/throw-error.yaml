@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: throw-error-trigger
+  namespace: default
+  annotations:
+    glint-test: "THROW ERROR"
+data: {}
