@@ -2,3 +2,8 @@ rules:
   built_in:
     resource_requests:
       enabled: true
+
+plugins:
+  - name: throw-error
+    command: ./test/testdata/throw-error.sh
+    allow_nonzero_exit: true

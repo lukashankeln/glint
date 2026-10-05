@@ -16,6 +16,20 @@ type Config struct {
 	Rules     RulesConfig     `yaml:"rules"`
 	Output    OutputConfig    `yaml:"output"`
 	FailOn    []string        `yaml:"fail_on"`
+	Plugins   []PluginConfig  `yaml:"plugins"`
+}
+
+// PluginConfig describes a single external plugin that participates in the lint pipeline.
+type PluginConfig struct {
+	Name             string            `yaml:"name"`
+	Command          string            `yaml:"command"`
+	Args             []string          `yaml:"args"`
+	Adapter          string            `yaml:"adapter"`            // built-in adapter name; empty = native JSON protocol
+	Severity         string            `yaml:"severity"`           // optional override for all violations from this plugin
+	Input            string            `yaml:"input"`              // "stdin" (default) or "file"
+	Timeout          string            `yaml:"timeout"`            // e.g. "30s"; defaults to 30s if unset
+	AllowNonZeroExit bool              `yaml:"allow_nonzero_exit"` // if true, non-zero exit is not an error (for plugins that exit 1 on violations)
+	Env              map[string]string `yaml:"env"`
 }
 
 type DiscoveryConfig struct {
@@ -227,6 +241,29 @@ func (c *Config) Validate() error {
 		if len(exc.Resources) == 0 {
 			return fmt.Errorf("rules.exceptions[%s]: 'resources' list must not be empty", exc.Rule)
 		}
+	}
+
+	seenPlugins := map[string]bool{}
+	for i, p := range c.Plugins {
+		if p.Name == "" {
+			return fmt.Errorf("plugins[%d]: name must not be empty", i)
+		}
+		if p.Command == "" {
+			return fmt.Errorf("plugins[%s]: command must not be empty", p.Name)
+		}
+		if p.Input != "" && p.Input != "stdin" && p.Input != "file" {
+			return fmt.Errorf("plugins[%s]: input must be 'stdin' or 'file', got %q", p.Name, p.Input)
+		}
+		if p.Severity != "" {
+			s := strings.ToLower(p.Severity)
+			if s != "error" && s != "warning" && s != "info" {
+				return fmt.Errorf("plugins[%s]: unknown severity %q", p.Name, p.Severity)
+			}
+		}
+		if seenPlugins[p.Name] {
+			return fmt.Errorf("plugins: duplicate plugin name %q", p.Name)
+		}
+		seenPlugins[p.Name] = true
 	}
 
 	return nil

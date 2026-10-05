@@ -13,6 +13,7 @@ import (
 	"github.com/lukashankeln/glint/internal/config"
 	"github.com/lukashankeln/glint/internal/discovery"
 	"github.com/lukashankeln/glint/internal/manifest"
+	"github.com/lukashankeln/glint/internal/plugins"
 	"github.com/lukashankeln/glint/internal/rules"
 )
 
@@ -61,6 +62,12 @@ func newLintCmd() *cobra.Command {
 				return fmt.Errorf("initializing rule engine: %w", err)
 			}
 
+			// Build plugins — fail fast on unknown adapters or bad config.
+			pluginList, err := plugins.Build(cfg.Plugins)
+			if err != nil {
+				return fmt.Errorf("initializing plugins: %w", err)
+			}
+
 			// Discover apps.
 			apps, parseErrors, err := discovery.Discover(cmd.Context(), paths, cfg)
 			if err != nil {
@@ -74,6 +81,7 @@ func newLintCmd() *cobra.Command {
 
 			// Render all apps in parallel and collect manifests.
 			var allManifests []manifest.Manifest
+			var successfulRenders []renderResult
 			rendered := 0
 			for _, r := range renderAppsParallel(cmd.Context(), apps, cfg) {
 				if cmd.Context().Err() != nil {
@@ -85,11 +93,26 @@ func newLintCmd() *cobra.Command {
 				}
 				rendered++
 				allManifests = append(allManifests, r.manifests...)
+				successfulRenders = append(successfulRenders, r)
 			}
 			slog.Info("rendering complete", "apps", rendered, "manifests", len(allManifests))
 
+			// Run plugins against each app's manifests after all rendering is done.
+			var pluginViolations []rules.Violation
+			for _, r := range successfulRenders {
+				for _, p := range pluginList {
+					slog.Debug("running plugin", "plugin", p.Name(), "app", r.app.Name)
+					pvs, perr := p.Run(cmd.Context(), r.manifests)
+					if perr != nil {
+						return fmt.Errorf("plugin %q on app %q: %w", p.Name(), r.app.Name, perr)
+					}
+					pluginViolations = append(pluginViolations, pvs...)
+				}
+			}
+
 			// Evaluate rules.
 			violations := engine.Evaluate(allManifests)
+			violations = append(violations, pluginViolations...)
 
 			// Files that were identified as GitOps CRDs but could not be parsed
 			// cannot be validated at all, so they are reported as errors.
