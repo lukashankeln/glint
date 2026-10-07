@@ -1,6 +1,7 @@
 id: no-latest-tag
 description: "Container images must not use the :latest tag"
 severity: error
+on_eval_error: error
 match:
   kinds: [Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob]
 expression: |

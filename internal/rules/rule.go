@@ -28,6 +28,7 @@ type RuleDef struct {
 	Expression  string // CEL expression; true = compliant, false = violation
 	Message     string // Go text/template; vars: .kind .name .namespace .apiVersion .severity
 	Source      string // "built-in" | file path
+	OnEvalError string // "error" (default) or "warning"
 }
 
 // MatchFilter is a pre-CEL filter that scopes a rule to specific resources.

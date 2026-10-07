@@ -8,6 +8,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	OnEvalErrorError   = "error"
+	OnEvalErrorWarning = "warning"
+)
+
 // Config is the top-level configuration structure populated from glint.yaml.
 type Config struct {
 	Version   string          `yaml:"version"`
@@ -108,6 +113,7 @@ type CustomRuleDef struct {
 	Match       MatchFilterConfig `yaml:"match"`
 	Expression  string            `yaml:"expression"`
 	Message     string            `yaml:"message"`
+	OnEvalError string            `yaml:"on_eval_error"` // "error" (default) or "warning"
 }
 
 type MatchFilterConfig struct {
@@ -240,6 +246,12 @@ func (c *Config) Validate() error {
 		}
 		if len(exc.Resources) == 0 {
 			return fmt.Errorf("rules.exceptions[%s]: 'resources' list must not be empty", exc.Rule)
+		}
+	}
+
+	for i, r := range c.Rules.Custom {
+		if r.OnEvalError != "" && r.OnEvalError != OnEvalErrorWarning && r.OnEvalError != OnEvalErrorError {
+			return fmt.Errorf("rules.custom[%d] (%s): on_eval_error must be %q or %q, got %q", i, r.ID, OnEvalErrorWarning, OnEvalErrorError, r.OnEvalError)
 		}
 	}
 
