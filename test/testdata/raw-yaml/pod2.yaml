@@ -3,12 +3,19 @@ kind: Pod
 metadata:
   labels:
     app: pod
-  name: pod-7dfd9956bf-9trlb
+  name: pod-ihghlsda-9trlb
   namespace: pod
 spec:
   containers:
     - image: some-pod:latest
       name: some-pod
+      resources:
+        limits:
+          cpu: 100m
+          memory: 128Mi
+        requests:
+          cpu: 100m
+          memory: 128Mi
   initContainers:
     - image: some-init-container:latest
       name: some-init-container

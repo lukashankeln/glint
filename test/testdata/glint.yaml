@@ -1,0 +1,4 @@
+rules:
+  built_in:
+    resource_requests:
+      enabled: true

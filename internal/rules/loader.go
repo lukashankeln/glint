@@ -70,12 +70,11 @@ func LoadBuiltIns(cfg config.RulesConfig) ([]RuleDef, error) {
 		// Apply config overrides for built-in rules.
 		def = applyBuiltInOverride(def, cfg)
 
-		// Apply param substitution.
+		// Apply param substitution. Rules with a substitutor always use the
+		// generated expression regardless of whether the user set params.
 		if sub, ok := builtins.ParamSubstitutors[def.ID]; ok {
-			if params := builtInParams(def.ID, cfg); len(params) > 0 {
-				if expr := sub(params); expr != "" {
-					def.Expression = expr
-				}
+			if expr := sub(builtInParams(def.ID, cfg)); expr != "" {
+				def.Expression = expr
 			}
 		}
 
