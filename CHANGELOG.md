@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.2](https://github.com/lukashankeln/glint/compare/v0.2.1...v0.2.2) (2026-10-07)
+
+
+### Features
+
+* enable builtin rule for resource requests by default ([80bd0e5](https://github.com/lukashankeln/glint/commit/80bd0e5e9484a28286e55a15b1020a5ec2f86cdb))
+* generic plugin system ([#63](https://github.com/lukashankeln/glint/issues/63)) ([059696d](https://github.com/lukashankeln/glint/commit/059696dff085700a694175db2eb0e532fcd855ab))
+* **rules:** add init_containers param to resource-requests ([127f2ca](https://github.com/lukashankeln/glint/commit/127f2caca6ca790678847a067bf0a6b586e8adf5))
+
 ## [0.2.1](https://github.com/lukashankeln/glint/compare/v0.2.0...v0.2.1) (2026-10-02)
 
 
