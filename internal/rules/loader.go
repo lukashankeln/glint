@@ -224,7 +224,15 @@ func applyBuiltInOverride(def RuleDef, cfg config.RulesConfig) RuleDef {
 	return def
 }
 
-func builtInParams(_ string, _ config.RulesConfig) map[string]any {
+func builtInParams(id string, cfg config.RulesConfig) map[string]any {
+	switch id {
+	case "no-latest-tag":
+		return cfg.BuiltIn.NoLatestTag.Params
+	case "resource-requests":
+		return cfg.BuiltIn.ResourceRequests.Params
+	case "deprecated-apis":
+		return cfg.BuiltIn.DeprecatedAPIs.Params
+	}
 	return nil
 }
 
