@@ -183,7 +183,22 @@ func (e *Engine) evaluateManifest(m manifest.Manifest) []Violation {
 
 		out, _, err := rule.program.Eval(vars)
 		if err != nil {
-			slog.Warn("CEL evaluation error, skipping", "rule", rule.Def.ID, "resource", m.Kind+"/"+m.Name, "err", err)
+			if rule.Def.OnEvalError == config.OnEvalErrorWarning {
+				slog.Warn("CEL evaluation error, skipping", "rule", rule.Def.ID, "resource", m.Kind+"/"+m.Name, "err", err)
+			} else {
+				violations = append(violations, Violation{
+					RuleID:       rule.Def.ID,
+					Severity:     SeverityError,
+					Message:      fmt.Sprintf("CEL evaluation error: %v", err),
+					Source:       "cel",
+					APIVersion:   m.APIVersion,
+					ResourceKind: m.Kind,
+					ResourceName: m.Name,
+					ResourceNS:   m.Namespace,
+					FilePath:     m.SourcePath,
+					Rendered:     m.Rendered,
+				})
+			}
 			continue
 		}
 

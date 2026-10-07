@@ -1,6 +1,7 @@
 id: deprecated-apis
 description: "Resources must not use deprecated or removed API versions"
 severity: error
+on_eval_error: error
 expression: >
   !(apiVersion in [
     "extensions/v1beta1",

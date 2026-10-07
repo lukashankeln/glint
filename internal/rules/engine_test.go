@@ -118,6 +118,7 @@ func TestEngine_NoLatestTag_SkipsNonMatchingKind(t *testing.T) {
 func TestEngine_DeprecatedAPIs_Violation(t *testing.T) {
 	cfg := defaultRulesCfg()
 	cfg.BuiltIn.NoLatestTag.Enabled = false
+	cfg.BuiltIn.ResourceRequests.Enabled = false
 
 	engine, err := NewEngine(cfg)
 	require.NoError(t, err)
@@ -131,6 +132,7 @@ func TestEngine_DeprecatedAPIs_Violation(t *testing.T) {
 func TestEngine_DeprecatedAPIs_Compliant(t *testing.T) {
 	cfg := defaultRulesCfg()
 	cfg.BuiltIn.NoLatestTag.Enabled = false
+	cfg.BuiltIn.ResourceRequests.Enabled = false
 
 	engine, err := NewEngine(cfg)
 	require.NoError(t, err)
@@ -397,6 +399,53 @@ func TestEngine_ResourceRequests_InitContainerCheckedByDefault(t *testing.T) {
 	violations := engine.Evaluate([]manifest.Manifest{initContainerDeployment()})
 	require.Len(t, violations, 1)
 	assert.Equal(t, "resource-requests", violations[0].RuleID)
+}
+
+// onEvalErrorCfg builds a config with a single custom rule whose expression
+// will cause a CEL runtime error (type mismatch) and sets on_eval_error to mode.
+func onEvalErrorCfg(mode string) config.RulesConfig {
+	return config.RulesConfig{
+		Custom: []config.CustomRuleDef{
+			{
+				ID:          "test-eval-error",
+				Severity:    "warning",
+				Expression:  `1 / 0 == 0`, // always causes a CEL runtime division-by-zero error
+				Message:     "should not appear",
+				OnEvalError: mode,
+			},
+		},
+	}
+}
+
+func TestEngine_OnEvalError_Warning_Skips(t *testing.T) {
+	engine, err := NewEngine(onEvalErrorCfg("warning"))
+	require.NoError(t, err)
+
+	m := makeManifest("v1", "ConfigMap", "cm", "default", nil)
+	violations := engine.Evaluate([]manifest.Manifest{m})
+	assert.Empty(t, violations, "warning mode should skip the resource, not produce a violation")
+}
+
+func TestEngine_OnEvalError_Default_ProducesViolation(t *testing.T) {
+	engine, err := NewEngine(onEvalErrorCfg(""))
+	require.NoError(t, err)
+
+	m := makeManifest("v1", "ConfigMap", "cm", "default", nil)
+	violations := engine.Evaluate([]manifest.Manifest{m})
+	require.Len(t, violations, 1, "default (empty) should behave like error")
+	assert.Equal(t, SeverityError, violations[0].Severity)
+}
+
+func TestEngine_OnEvalError_Error_ProducesViolation(t *testing.T) {
+	engine, err := NewEngine(onEvalErrorCfg("error"))
+	require.NoError(t, err)
+
+	m := makeManifest("v1", "ConfigMap", "cm", "default", nil)
+	violations := engine.Evaluate([]manifest.Manifest{m})
+	require.Len(t, violations, 1)
+	assert.Equal(t, "test-eval-error", violations[0].RuleID)
+	assert.Equal(t, SeverityError, violations[0].Severity)
+	assert.Contains(t, violations[0].Message, "CEL evaluation error")
 }
 
 func TestEngine_ResourceRequests_InitContainersDisabled(t *testing.T) {

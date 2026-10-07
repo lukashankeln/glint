@@ -31,6 +31,7 @@ type ruleYAML struct {
 	Match       matchFilterYAML `yaml:"match"`
 	Expression  string          `yaml:"expression"`
 	Message     string          `yaml:"message"`
+	OnEvalError string          `yaml:"on_eval_error"`
 }
 
 type matchFilterYAML struct {
@@ -129,9 +130,10 @@ func LoadCustomInline(cfg config.RulesConfig) ([]RuleDef, error) {
 				ExcludeNamespaces: c.Match.ExcludeNamespaces,
 				Labels:            c.Match.Labels,
 			},
-			Expression: preprocessExpression(c.Expression),
-			Message:    c.Message,
-			Source:     "glint.yaml",
+			Expression:  preprocessExpression(c.Expression),
+			Message:     c.Message,
+			Source:      "glint.yaml",
+			OnEvalError: c.OnEvalError,
 		}
 		if def.Severity == "" {
 			def.Severity = SeverityError
@@ -194,9 +196,10 @@ func ruleYAMLToDef(ry ruleYAML, source string) RuleDef {
 			ExcludeNamespaces: ry.Match.ExcludeNamespaces,
 			Labels:            ry.Match.Labels,
 		},
-		Expression: ry.Expression,
-		Message:    ry.Message,
-		Source:     source,
+		Expression:  ry.Expression,
+		Message:     ry.Message,
+		Source:      source,
+		OnEvalError: ry.OnEvalError,
 	}
 }
 

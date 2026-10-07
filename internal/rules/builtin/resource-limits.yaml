@@ -1,6 +1,7 @@
 id: resource-requests
 description: "All containers must specify CPU and memory requests"
 severity: warning
+on_eval_error: error
 match:
   kinds: [Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob]
 message: "One or more containers are missing resource requests"
