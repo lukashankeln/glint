@@ -102,6 +102,8 @@ rules:
     resource_requests:
       enabled: false      # disabled by default
       severity: warning
+      params:
+        init_containers: true   # false = only regular containers need requests
 
     deprecated_apis:
       enabled: true

@@ -360,3 +360,73 @@ func violationIDs(vs []Violation) []string {
 	}
 	return ids
 }
+
+func initContainerDeployment() manifest.Manifest {
+	withRequests := map[string]any{
+		"requests": map[string]any{"cpu": "100m", "memory": "128Mi"},
+	}
+	return makeManifest("apps/v1", "Deployment", "my-app", "default", map[string]any{
+		"spec": map[string]any{
+			"template": map[string]any{
+				"spec": map[string]any{
+					"initContainers": []any{
+						map[string]any{"name": "init", "image": "busybox:1.36"},
+					},
+					"containers": []any{
+						map[string]any{"name": "app", "image": "nginx:1.21", "resources": withRequests},
+					},
+				},
+			},
+		},
+	})
+}
+
+func resourceRequestsOnly(params map[string]any) config.RulesConfig {
+	cfg := defaultRulesCfg()
+	cfg.BuiltIn.NoLatestTag.Enabled = false
+	cfg.BuiltIn.DeprecatedAPIs.Enabled = false
+	cfg.BuiltIn.ResourceRequests.Enabled = true
+	cfg.BuiltIn.ResourceRequests.Params = params
+	return cfg
+}
+
+func TestEngine_ResourceRequests_InitContainerCheckedByDefault(t *testing.T) {
+	engine, err := NewEngine(resourceRequestsOnly(nil))
+	require.NoError(t, err)
+
+	violations := engine.Evaluate([]manifest.Manifest{initContainerDeployment()})
+	require.Len(t, violations, 1)
+	assert.Equal(t, "resource-requests", violations[0].RuleID)
+}
+
+func TestEngine_ResourceRequests_InitContainersDisabled(t *testing.T) {
+	engine, err := NewEngine(resourceRequestsOnly(map[string]any{"init_containers": false}))
+	require.NoError(t, err)
+
+	assert.Empty(t, engine.Evaluate([]manifest.Manifest{initContainerDeployment()}))
+}
+
+func TestEngine_ResourceRequests_InitContainersDisabled_StillChecksContainers(t *testing.T) {
+	engine, err := NewEngine(resourceRequestsOnly(map[string]any{"init_containers": false}))
+	require.NoError(t, err)
+
+	m := makeManifest("batch/v1", "CronJob", "my-job", "default", map[string]any{
+		"spec": map[string]any{
+			"jobTemplate": map[string]any{
+				"spec": map[string]any{
+					"template": map[string]any{
+						"spec": map[string]any{
+							"containers": []any{
+								map[string]any{"name": "job", "image": "busybox:1.36"},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	violations := engine.Evaluate([]manifest.Manifest{m})
+	require.Len(t, violations, 1)
+	assert.Equal(t, "resource-requests", violations[0].RuleID)
+}
