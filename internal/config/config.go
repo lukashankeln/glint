@@ -189,7 +189,7 @@ func defaultConfig() *Config {
 		Rules: RulesConfig{
 			BuiltIn: BuiltInRulesConfig{
 				NoLatestTag:      BuiltInRuleConfig{Enabled: true, Severity: "error"},
-				ResourceRequests: BuiltInRuleConfig{Enabled: false, Severity: "warning"},
+				ResourceRequests: BuiltInRuleConfig{Enabled: true, Severity: "warning"},
 				DeprecatedAPIs:   BuiltInRuleConfig{Enabled: true, Severity: "error"},
 			},
 		},
