@@ -129,7 +129,7 @@ func TestRunner_NonZeroExit_Allowed(t *testing.T) {
 }
 
 func TestRunner_MalformedJSON(t *testing.T) {
-	// Malformed JSON always errors — we cannot trust what the plugin evaluated.
+	// Malformed JSON surfaces as an error-severity violation so lint continues.
 	r, err := New(config.PluginConfig{
 		Name:    "test",
 		Command: selfExe(t),
@@ -137,9 +137,11 @@ func TestRunner_MalformedJSON(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = r.Run(context.Background(), testManifests)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "parsing output")
+	vs, err := r.Run(context.Background(), testManifests)
+	require.NoError(t, err)
+	require.Len(t, vs, 1)
+	assert.Equal(t, rules.SeverityError, vs[0].Severity)
+	assert.Contains(t, vs[0].Message, "could not be parsed")
 }
 
 func TestRunner_FileMode(t *testing.T) {

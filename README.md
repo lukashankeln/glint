@@ -215,8 +215,21 @@ Plugin violations feed into the same output formatters, `fail_on` logic, and `--
 | `severity` | — | Override severity for all violations from this plugin |
 | `input` | `stdin` | How manifests are passed: `stdin` or `file` (path appended to args) |
 | `timeout` | `30s` | Kill the plugin after this duration (e.g. `"60s"`, `"2m"`) |
-| `fail_on_error` | `false` | Treat non-zero plugin exit as a fatal lint error |
+| `allow_nonzero_exit` | `false` | Suppress the eval-error violation when the plugin exits non-zero (for tools that exit 1 on findings) |
 | `env` | `{}` | Extra environment variables |
+
+**kubeconform** — validate manifests against Kubernetes JSON schemas:
+
+```yaml
+plugins:
+  - name:    kubeconform
+    command: kubeconform
+    args:    ["-strict", "-output", "json", "-"]
+    adapter: kubeconform
+    severity: error
+```
+
+Install kubeconform: `brew install kubeconform` or see [github.com/yannh/kubeconform](https://github.com/yannh/kubeconform).
 
 **Native output protocol** — plugins without an adapter must write a JSON array to stdout:
 
