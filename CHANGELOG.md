@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.3](https://github.com/lukashankeln/glint/compare/v0.2.2...v0.2.3) (2026-10-08)
+
+
+### Features
+
+* **plugins:** add kubeconform adapter ([fec4d11](https://github.com/lukashankeln/glint/commit/fec4d1171b981a46bf45fb994d38f0aeaab750ef)), closes [#64](https://github.com/lukashankeln/glint/issues/64)
+* **rules:** add on_eval_error field for CEL rules ([389ea3a](https://github.com/lukashankeln/glint/commit/389ea3ac8edf207bc7fc5c0d13430704f485b514)), closes [#65](https://github.com/lukashankeln/glint/issues/65)
+
 ## [0.2.2](https://github.com/lukashankeln/glint/compare/v0.2.1...v0.2.2) (2026-10-07)
 
 
