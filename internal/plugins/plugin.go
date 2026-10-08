@@ -18,10 +18,6 @@ type Plugin interface {
 type Adapter func(stdout []byte, severity rules.Severity) ([]rules.Violation, error)
 
 // adapters is the registry of built-in adapters, keyed by name.
-// Issue #64 registers the kubeconform adapter here.
-var adapters = map[string]Adapter{}
-
-// RegisterAdapter registers a named adapter. Called during package init by adapter subpackages.
-func RegisterAdapter(name string, a Adapter) {
-	adapters[name] = a
+var adapters = map[string]Adapter{
+	"kubeconform": parseKubeconform,
 }

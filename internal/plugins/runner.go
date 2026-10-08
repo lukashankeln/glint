@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -157,6 +158,7 @@ func (r *Runner) Run(ctx context.Context, manifests []manifest.Manifest) ([]rule
 				Severity: rules.SeverityError,
 				Message:  fmt.Sprintf("plugin could not complete evaluation: %v", err),
 				Source:   r.cfg.Name,
+				FilePath: sourceFile(manifests),
 			}
 			evalErr = &v
 		}
@@ -164,13 +166,19 @@ func (r *Runner) Run(ctx context.Context, manifests []manifest.Manifest) ([]rule
 
 	var violations []rules.Violation
 	if len(bytes.TrimSpace(stdout)) > 0 {
+		var parseErr error
 		if r.adapter != nil {
-			violations, err = r.adapter(stdout, r.severity)
+			violations, parseErr = r.adapter(stdout, r.severity)
 		} else {
-			violations, err = parseNative(stdout, r.cfg.Name, r.severity)
+			violations, parseErr = parseNative(stdout, r.cfg.Name, r.severity)
 		}
-		if err != nil {
-			return violations, fmt.Errorf("plugin %q: parsing output: %v", r.cfg.Name, err)
+		if parseErr != nil {
+			violations = append(violations, rules.Violation{
+				RuleID:   r.cfg.Name,
+				Severity: rules.SeverityError,
+				Message:  fmt.Sprintf("plugin output could not be parsed: %v", parseErr),
+				Source:   r.cfg.Name,
+			})
 		}
 	}
 
@@ -275,4 +283,28 @@ func parseNative(data []byte, source string, severityOverride rules.Severity) ([
 		})
 	}
 	return vs, nil
+}
+
+// sourceFile returns the common source path when all manifests share one file,
+// or empty string when they span multiple files or have no path info.
+// The path is made relative to the working directory when possible.
+func sourceFile(manifests []manifest.Manifest) string {
+	if len(manifests) == 0 {
+		return ""
+	}
+	first := manifests[0].SourcePath
+	if first == "" {
+		return ""
+	}
+	for _, m := range manifests[1:] {
+		if m.SourcePath != first {
+			return ""
+		}
+	}
+	if wd, err := os.Getwd(); err == nil {
+		if rel, err := filepath.Rel(wd, first); err == nil {
+			return rel
+		}
+	}
+	return first
 }

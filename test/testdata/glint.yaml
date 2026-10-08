@@ -7,3 +7,7 @@ plugins:
   - name: throw-error
     command: ./test/testdata/throw-error.sh
     allow_nonzero_exit: true
+  - name: kubeconform
+    command: ./test/testdata/fake-kubeconform.sh
+    adapter: kubeconform
+    severity: error
