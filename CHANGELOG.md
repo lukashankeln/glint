@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.3](https://github.com/lukashankeln/glint/compare/v0.2.2...v0.2.3) (2026-10-13)
+
+
+### Features
+
+* adding support for junit output next to stdout ([38c64b8](https://github.com/lukashankeln/glint/commit/38c64b80395b825dbd6fb4d006d83d32912b2e51))
+* **plugins:** add kubeconform adapter ([fec4d11](https://github.com/lukashankeln/glint/commit/fec4d1171b981a46bf45fb994d38f0aeaab750ef)), closes [#64](https://github.com/lukashankeln/glint/issues/64)
+* **rules:** add on_eval_error field for CEL rules ([389ea3a](https://github.com/lukashankeln/glint/commit/389ea3ac8edf207bc7fc5c0d13430704f485b514)), closes [#65](https://github.com/lukashankeln/glint/issues/65)
+
+
+### Bug Fixes
+
+* dependecy issue ([a44fe0a](https://github.com/lukashankeln/glint/commit/a44fe0a29ee57a1c5743316783026eed8784d003))
+* **deps:** update golang docker tag to v1.27.2 ([3561bac](https://github.com/lukashankeln/glint/commit/3561bacb71dd6087361e9a8d81064ccb71f6ac2c))
+* **deps:** update module github.com/bmatcuk/doublestar/v4 to v4.10.3 ([857f281](https://github.com/lukashankeln/glint/commit/857f281272ad079b17028e741bed59fa71a0bde3))
+* **deps:** update module sigs.k8s.io/kustomize/api to v0.21.3 ([2636a03](https://github.com/lukashankeln/glint/commit/2636a037e09d1c18bcd8d029b91ea5f47c66c654))
+
 ## [0.2.2](https://github.com/lukashankeln/glint/compare/v0.2.1...v0.2.2) (2026-10-07)
 
 
