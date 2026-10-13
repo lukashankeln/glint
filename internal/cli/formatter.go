@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"strings"
@@ -70,6 +71,8 @@ func writeOutput(w io.Writer, violations []rules.Violation, format string) error
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		return enc.Encode(s)
+	case "junit":
+		return writeJUnit(w, violations)
 	default: // "text" or ""
 		return writeText(w, violations)
 	}
@@ -238,4 +241,78 @@ func writeSARIF(w io.Writer, violations []rules.Violation) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(out)
+}
+
+func writeJUnit(w io.Writer, violations []rules.Violation) error {
+	type junitFailure struct {
+		XMLName xml.Name `xml:"failure"`
+		Message string   `xml:"message,attr"`
+		Type    string   `xml:"type,attr"`
+		Body    string   `xml:",chardata"`
+	}
+	type junitCase struct {
+		XMLName   xml.Name      `xml:"testcase"`
+		Name      string        `xml:"name,attr"`
+		Classname string        `xml:"classname,attr"`
+		Failure   *junitFailure `xml:",omitempty"`
+	}
+	type junitSuite struct {
+		XMLName  xml.Name    `xml:"testsuite"`
+		Name     string      `xml:"name,attr"`
+		Tests    int         `xml:"tests,attr"`
+		Failures int         `xml:"failures,attr"`
+		Cases    []junitCase `xml:"testcase"`
+	}
+	type junitSuites struct {
+		XMLName xml.Name     `xml:"testsuites"`
+		Suites  []junitSuite `xml:"testsuite"`
+	}
+
+	failures := 0
+	cases := make([]junitCase, 0, len(violations))
+	for _, v := range violations {
+		name := v.RuleID
+		if v.FilePath != "" {
+			name = v.RuleID + ": " + v.FilePath
+		}
+		classname := v.FilePath
+		if classname == "" {
+			classname = "glint"
+		}
+		body := fmt.Sprintf("[%s] %s", strings.ToUpper(string(v.Severity)), v.Message)
+		if v.ResourceKind != "" {
+			body += fmt.Sprintf(" (%s/%s)", v.ResourceKind, v.ResourceName)
+		}
+		cases = append(cases, junitCase{
+			Name:      name,
+			Classname: classname,
+			Failure: &junitFailure{
+				Message: v.Message,
+				Type:    string(v.Severity),
+				Body:    body,
+			},
+		})
+		failures++
+	}
+
+	out := junitSuites{
+		Suites: []junitSuite{
+			{
+				Name:     "glint",
+				Tests:    len(cases),
+				Failures: failures,
+				Cases:    cases,
+			},
+		},
+	}
+
+	if _, err := fmt.Fprint(w, xml.Header); err != nil {
+		return err
+	}
+	enc := xml.NewEncoder(w)
+	enc.Indent("", "  ")
+	if err := enc.Encode(out); err != nil {
+		return err
+	}
+	return enc.Flush()
 }

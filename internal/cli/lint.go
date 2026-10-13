@@ -26,6 +26,7 @@ func newLintCmd() *cobra.Command {
 		output      string
 		outputJSON  string
 		outputSARIF string
+		outputJUnit string
 	)
 
 	cmd := &cobra.Command{
@@ -168,6 +169,18 @@ func newLintCmd() *cobra.Command {
 				}
 			}
 
+			// Write JUnit alongside any other format.
+			if outputJUnit != "" {
+				f, err := os.Create(outputJUnit)
+				if err != nil {
+					return fmt.Errorf("creating JUnit output file: %w", err)
+				}
+				defer f.Close()
+				if err := writeJUnit(f, violations); err != nil {
+					return fmt.Errorf("writing JUnit output: %w", err)
+				}
+			}
+
 			// Write JSON summary if requested (for CI step output capture).
 			if outputJSON != "" {
 				s := buildSummary(violations)
@@ -198,6 +211,7 @@ func newLintCmd() *cobra.Command {
 	cmd.Flags().StringVar(&output, "output", "", "write output to file instead of stdout")
 	cmd.Flags().StringVar(&outputJSON, "output-json", "", "write JSON summary to file (for CI step capture)")
 	cmd.Flags().StringVar(&outputSARIF, "output-sarif", "", "write SARIF output to file alongside the primary format")
+	cmd.Flags().StringVar(&outputJUnit, "output-junit", "", "write JUnit XML to file alongside the primary format")
 	return cmd
 }
 
