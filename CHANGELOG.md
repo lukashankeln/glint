@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.4](https://github.com/lukashankeln/glint/compare/v0.2.3...v0.2.4) (2026-10-13)
+
+
+### Bug Fixes
+
+* **deps:** update kube-the-home/github-actions action to v1.4.15 ([564d1c1](https://github.com/lukashankeln/glint/commit/564d1c18a0dce315ed570b2b6643f97bd13ee45d))
+
 ## [0.2.3](https://github.com/lukashankeln/glint/compare/v0.2.2...v0.2.3) (2026-10-13)
 
 
