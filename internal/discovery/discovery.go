@@ -57,6 +57,7 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 
 		repoRoot := findRepoRoot(abs)
 		overrideMap := buildOverrideMap(cfg, repoRoot)
+		repoURLs := loadRepoURLs(repoRoot, cfg.Discovery.RepoAliases)
 
 		// Phase 1: Walk the directory tree.
 		// Directory-level detection (Helm charts, Kustomize overlays) must remain
@@ -121,7 +122,7 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 		}
 
 		// Phase 2: Parse all YAML files concurrently.
-		fileResults := parseFilesParallel(ctx, yamlFiles, repoRoot)
+		fileResults := parseFilesParallel(ctx, yamlFiles, repoRoot, repoURLs)
 
 		// Phase 3: Build the complete HelmRepository map from all parsed files.
 		helmRepos := make(map[string]string)
@@ -185,7 +186,7 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 
 // parseFilesParallel reads and parses all YAML files concurrently using a
 // worker pool and returns results in file order.
-func parseFilesParallel(ctx context.Context, files []string, repoRoot string) []fileResult {
+func parseFilesParallel(ctx context.Context, files []string, repoRoot string, repoURLs map[string]bool) []fileResult {
 	if len(files) == 0 {
 		return nil
 	}
@@ -204,7 +205,7 @@ func parseFilesParallel(ctx context.Context, files []string, repoRoot string) []
 	for range workers {
 		wg.Go(func() {
 			for j := range jobs {
-				results[j.idx] = parseFile(ctx, j.path, repoRoot)
+				results[j.idx] = parseFile(ctx, j.path, repoRoot, repoURLs)
 			}
 		})
 	}
@@ -222,7 +223,7 @@ func parseFilesParallel(ctx context.Context, files []string, repoRoot string) []
 // HelmRelease documents are returned as pendingReleases because their sourceRef
 // resolution requires the complete HelmRepository map, which is only available
 // after all files have been processed.
-func parseFile(ctx context.Context, path, repoRoot string) fileResult {
+func parseFile(ctx context.Context, path, repoRoot string, repoURLs map[string]bool) fileResult {
 	if ctx.Err() != nil {
 		return fileResult{}
 	}
@@ -266,14 +267,13 @@ func parseFile(ctx context.Context, path, repoRoot string) fileResult {
 			if strings.ToLower(kind) == "applicationset" {
 				continue
 			}
-			app, err := parseArgoCDApplication(docBytes, repoRoot, path)
+			app, err := parseArgoCDApplication(docBytes, repoRoot, path, repoURLs)
 			if err != nil {
 				slog.Error("failed to parse ArgoCD Application", "file", path, "err", err)
 				result.parseErrors = append(result.parseErrors, ParseError{FilePath: path, Message: err.Error()})
 				continue
 			}
 			if app == nil {
-				slog.Debug("skipping ArgoCD Application with remote repoURL", "file", path)
 				continue
 			}
 			result.apps = append(result.apps, *app)

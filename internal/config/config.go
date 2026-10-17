@@ -41,6 +41,9 @@ type DiscoveryConfig struct {
 	Paths     []string            `yaml:"paths"`
 	Exclude   []string            `yaml:"exclude"`
 	Overrides []DiscoveryOverride `yaml:"overrides"`
+	// RepoAliases are additional URLs of the scanned repository, used to resolve
+	// GitOps sources that point at it when its git remotes do not match.
+	RepoAliases []string `yaml:"repo_aliases"`
 }
 
 type DiscoveryOverride struct {
