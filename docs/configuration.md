@@ -47,6 +47,13 @@ discovery:
           - values-prod.yaml
         set:
           image.tag: "1.2.3"
+
+  # Additional URLs of this repository. ArgoCD Applications whose repoURL
+  # matches the repository's git remotes (read from .git/config) or one of
+  # these aliases are rendered from the local working tree instead of being
+  # skipped as remote.
+  repo_aliases:
+    - "https://git.example.com/org/repo"
 ```
 
 glint auto-detects the renderer for each app:

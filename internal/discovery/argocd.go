@@ -2,6 +2,7 @@ package discovery
 
 import (
 	"fmt"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -39,11 +40,12 @@ type argoApplication struct {
 // decoded from YAML) into a DiscoveredApp.
 //
 // repoRoot is the root of the local repository being scanned. sourceFile is
-// the .yaml file that contained the Application manifest.
+// the .yaml file that contained the Application manifest. repoURLs holds the
+// normalized URLs of the local repository (see loadRepoURLs).
 //
 // Returns nil if the Application references a remote repo that cannot be
 // resolved locally.
-func parseArgoCDApplication(raw []byte, repoRoot, sourceFile string) (*DiscoveredApp, error) {
+func parseArgoCDApplication(raw []byte, repoRoot, sourceFile string, repoURLs map[string]bool) (*DiscoveredApp, error) {
 	var app argoApplication
 	if err := yaml.Unmarshal(raw, &app); err != nil {
 		return nil, fmt.Errorf("parsing ArgoCD Application: %w", err)
@@ -55,7 +57,7 @@ func parseArgoCDApplication(raw []byte, repoRoot, sourceFile string) (*Discovere
 	}
 
 	repoURL := app.Spec.Source.RepoURL
-	isRemote := repoURL != "" && !isLocalRepoURL(repoURL)
+	isRemote := repoURL != "" && !isLocalRepoURL(repoURL) && !repoURLs[normalizeGitURL(repoURL)]
 
 	// Remote Helm chart (spec.source.chart is set and repoURL is remote)
 	if app.Spec.Source.Chart != "" && isRemote {
@@ -84,7 +86,8 @@ func parseArgoCDApplication(raw []byte, repoRoot, sourceFile string) (*Discovere
 
 	// Skip Applications pointing to remote repos that aren't Helm charts.
 	if isRemote {
-		return nil, nil // caller should log this as a skip
+		slog.Info("skipping ArgoCD Application with remote source", "app", name, "repoURL", repoURL, "file", sourceFile)
+		return nil, nil
 	}
 
 	// Resolve the source path relative to the repo root.
