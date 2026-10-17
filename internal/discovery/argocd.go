@@ -57,8 +57,13 @@ func parseArgoCDApplication(raw []byte, repoRoot, sourceFile string) (*Discovere
 	repoURL := app.Spec.Source.RepoURL
 	isRemote := repoURL != "" && !isLocalRepoURL(repoURL)
 
+	chart := app.Spec.Source.Chart
+	if chart == "" {
+		repoURL, chart = splitOCIChartURL(repoURL, app.Spec.Source.Path)
+	}
+
 	// Remote Helm chart (spec.source.chart is set and repoURL is remote)
-	if app.Spec.Source.Chart != "" && isRemote {
+	if chart != "" && isRemote {
 		namespace := app.Spec.Destination.Namespace
 		releaseName := app.Spec.Source.Helm.ReleaseName
 		if releaseName == "" {
@@ -70,7 +75,7 @@ func parseArgoCDApplication(raw []byte, repoRoot, sourceFile string) (*Discovere
 			Renderer:     RendererHelm,
 			RootPath:     "",
 			RepoURL:      repoURL,
-			ChartName:    app.Spec.Source.Chart,
+			ChartName:    chart,
 			ChartVersion: app.Spec.Source.TargetRevision,
 			Namespace:    namespace,
 			ReleaseName:  releaseName,
@@ -175,6 +180,22 @@ func mergeArgoCDHelmValues(valuesStr string, valuesObject map[string]any) map[st
 	}
 
 	return base
+}
+
+// splitOCIChartURL splits an ArgoCD OCI source, where repoURL addresses the
+// chart artifact itself (oci://registry/org/chart), into registry path and
+// chart name. Sources with a path inside the artifact are left unsplit because
+// they are not rendered as a chart root.
+func splitOCIChartURL(repoURL, path string) (string, string) {
+	if !strings.HasPrefix(strings.ToLower(repoURL), "oci://") || (path != "" && path != ".") {
+		return repoURL, ""
+	}
+	trimmed := strings.TrimRight(repoURL, "/")
+	i := strings.LastIndex(trimmed, "/")
+	if i < len("oci://") {
+		return repoURL, ""
+	}
+	return trimmed[:i], trimmed[i+1:]
 }
 
 // isLocalRepoURL returns true when repoURL refers to the local filesystem
