@@ -2,6 +2,7 @@ package discovery
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -207,6 +208,43 @@ func TestDiscover_ArgoCDRemoteHelm(t *testing.T) {
 	assert.Equal(t, "4.10.0", nginxApp.ChartVersion)
 	assert.Equal(t, "ingress-nginx", nginxApp.Namespace)
 	assert.Equal(t, "", nginxApp.RootPath, "remote chart should have empty RootPath")
+}
+
+func TestDiscover_ArgoCDDirectoryRecurse(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, content string) {
+		p := filepath.Join(root, rel)
+		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+		require.NoError(t, os.WriteFile(p, []byte(content), 0o644))
+	}
+	app := func(name string, recurse bool) string {
+		doc := "apiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: " + name +
+			"\nspec:\n  source:\n    repoURL: \".\"\n    path: " + name + "\n"
+		if recurse {
+			doc += "    directory:\n      recurse: true\n"
+		}
+		return doc
+	}
+	cm := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\n"
+	write("apps/apps.yaml", app("deep", true)+"---\n"+app("flat", false))
+	write("deep/top.yaml", cm)
+	write("deep/nested/inner.yaml", cm)
+	write("flat/top.yaml", cm)
+	write("flat/nested/inner.yaml", cm)
+
+	apps, _, err := Discover(context.Background(), []string{root}, defaultCfg())
+	require.NoError(t, err)
+
+	byPath := map[string]DiscoveredApp{}
+	for _, a := range apps {
+		byPath[a.RootPath] = a
+	}
+	assert.True(t, byPath[filepath.Join(root, "deep")].Recurse)
+	assert.False(t, byPath[filepath.Join(root, "flat")].Recurse)
+
+	// Nested directories of a recursive app are rendered by it, not on their own.
+	assert.NotContains(t, byPath, filepath.Join(root, "deep", "nested"))
+	assert.Contains(t, byPath, filepath.Join(root, "flat", "nested"))
 }
 
 // --- detect.go unit tests ---

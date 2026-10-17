@@ -3,7 +3,9 @@ package render
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/lukashankeln/glint/internal/config"
@@ -20,33 +22,25 @@ func newRawRenderer(cfg *config.Config) *RawRenderer {
 	return &RawRenderer{cfg: cfg}
 }
 
-// Render reads YAML files directly inside app.RootPath (non-recursive).
-// Subdirectories are each their own raw app in discovery, so recursing here
-// would cause every file in a nested dir to be evaluated twice.
+// Render reads YAML files inside app.RootPath. Subdirectories are only
+// included when app.Recurse is set: otherwise discovery makes each of them its
+// own raw app, and recursing would evaluate every nested file twice.
 func (r *RawRenderer) Render(ctx context.Context, app discovery.DiscoveredApp) ([]manifest.Manifest, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
 
-	entries, err := os.ReadDir(app.RootPath)
+	files, err := rawYAMLFiles(app.RootPath, app.Recurse)
 	if err != nil {
-		return nil, fmt.Errorf("reading %q: %w", app.RootPath, err)
+		return nil, err
 	}
 
 	var manifests []manifest.Manifest
-	for _, entry := range entries {
+	for _, path := range files {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		if entry.IsDir() {
-			continue
-		}
-		lower := strings.ToLower(entry.Name())
-		if !strings.HasSuffix(lower, ".yaml") && !strings.HasSuffix(lower, ".yml") {
-			continue
-		}
 
-		path := app.RootPath + "/" + entry.Name()
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return nil, fmt.Errorf("reading %q: %w", path, err)
@@ -60,4 +54,48 @@ func (r *RawRenderer) Render(ctx context.Context, app discovery.DiscoveredApp) (
 	}
 
 	return manifests, nil
+}
+
+// rawYAMLFiles lists the YAML files in root in lexical order. With recurse,
+// subdirectories are included except hidden ones, matching discovery.
+func rawYAMLFiles(root string, recurse bool) ([]string, error) {
+	if !recurse {
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			return nil, fmt.Errorf("reading %q: %w", root, err)
+		}
+		var files []string
+		for _, entry := range entries {
+			if !entry.IsDir() && isYAMLName(entry.Name()) {
+				files = append(files, root+"/"+entry.Name())
+			}
+		}
+		return files, nil
+	}
+
+	var files []string
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if path != root && strings.HasPrefix(d.Name(), ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if isYAMLName(d.Name()) {
+			files = append(files, path)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("reading %q: %w", root, err)
+	}
+	return files, nil
+}
+
+func isYAMLName(name string) bool {
+	lower := strings.ToLower(name)
+	return strings.HasSuffix(lower, ".yaml") || strings.HasSuffix(lower, ".yml")
 }
