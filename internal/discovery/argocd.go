@@ -29,6 +29,9 @@ type argoApplication struct {
 				Values       string         `json:"values"`
 				ValuesObject map[string]any `json:"valuesObject"`
 			} `json:"helm"`
+			Directory struct {
+				Recurse bool `json:"recurse"`
+			} `json:"directory"`
 		} `json:"source"`
 		Destination struct {
 			Namespace string `json:"namespace"`
@@ -116,6 +119,7 @@ func parseArgoCDApplication(raw []byte, repoRoot, sourceFile string, repoURLs ma
 		Renderer:  renderer,
 		RootPath:  rootPath,
 		Namespace: namespace,
+		Recurse:   renderer == RendererRaw && app.Spec.Source.Directory.Recurse,
 		Source: &SourceRef{
 			Path: sourceFile,
 			Name: name,

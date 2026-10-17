@@ -32,6 +32,9 @@ type DiscoveredApp struct {
 	// RootPath is the absolute path to the chart root, overlay directory, or YAML directory.
 	RootPath string `json:"root_path"`
 
+	// Recurse makes the raw renderer include YAML files in subdirectories of RootPath.
+	Recurse bool `json:"recurse,omitempty"`
+
 	// ValuesFiles lists Helm values files to merge (in priority order, last wins).
 	ValuesFiles []string `json:"values_files,omitempty"`
 

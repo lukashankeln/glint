@@ -174,11 +174,20 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 
 		// Phase 5: Add raw YAML apps for directories that had plain manifests
 		// and weren't already claimed as a Helm chart or Kustomize overlay.
-		for i := range fileResults {
-			if dir := fileResults[i].rawDir; dir != "" && !seen[dir] {
-				seen[dir] = true
-				apps = append(apps, buildRawApp(dir, overrideMap))
+		// Directories below a recursive app are already rendered by it.
+		var recursiveRoots []string
+		for _, app := range apps {
+			if app.Recurse {
+				recursiveRoots = append(recursiveRoots, app.RootPath)
 			}
+		}
+		for i := range fileResults {
+			dir := fileResults[i].rawDir
+			if dir == "" || seen[dir] || isBelowAny(dir, recursiveRoots) {
+				continue
+			}
+			seen[dir] = true
+			apps = append(apps, buildRawApp(dir, overrideMap))
 		}
 	}
 
@@ -398,6 +407,16 @@ func gitopsKey(app DiscoveredApp) string {
 		return app.RootPath
 	}
 	return "gitops:" + app.Source.Path + "#" + app.Name + "#" + app.RootPath + "#" + app.ChartName
+}
+
+// isBelowAny reports whether dir is strictly inside one of roots.
+func isBelowAny(dir string, roots []string) bool {
+	for _, r := range roots {
+		if strings.HasPrefix(dir, r+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }
 
 // findRepoRoot walks upward from dir looking for a .git directory.

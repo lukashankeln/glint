@@ -59,7 +59,7 @@ discovery:
 glint auto-detects the renderer for each app:
 - **Helm** — directory contains `Chart.yaml`, or ArgoCD Application points to a Helm chart
 - **Kustomize** — directory contains `kustomization.yaml`, or Flux Kustomization resource
-- **Raw** — plain YAML files, no templating
+- **Raw** — plain YAML files, no templating. ArgoCD `directory.recurse: true` includes subdirectories.
 
 When an ArgoCD Application or Flux resource renders a directory that would also be discovered on its own, the GitOps resource takes precedence, so its values, namespace and source are used. Several GitOps resources rendering the same directory are all kept.
 

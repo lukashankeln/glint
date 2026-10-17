@@ -2,6 +2,7 @@ package render
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -138,6 +139,32 @@ func TestRawRenderer_SourcePathSet(t *testing.T) {
 		assert.NotEmpty(t, m.SourcePath, "SourcePath should be set for raw manifests")
 		assert.False(t, m.Rendered, "raw manifests should not be marked as rendered")
 	}
+}
+
+func TestRawRenderer_Recurse(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, name string) {
+		p := filepath.Join(root, rel)
+		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+		require.NoError(t, os.WriteFile(p, []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: "+name+"\n"), 0o644))
+	}
+	write("top.yaml", "top")
+	write("nested/inner.yml", "inner")
+	write(".hidden/ignored.yaml", "ignored")
+
+	names := func(recurse bool) []string {
+		app := discovery.DiscoveredApp{Name: "raw", Renderer: discovery.RendererRaw, RootPath: root, Recurse: recurse}
+		manifests, err := New(app, defaultCfg()).Render(context.Background(), app)
+		require.NoError(t, err)
+		var out []string
+		for _, m := range manifests {
+			out = append(out, m.Name)
+		}
+		return out
+	}
+
+	assert.ElementsMatch(t, []string{"top"}, names(false))
+	assert.ElementsMatch(t, []string{"top", "inner"}, names(true))
 }
 
 func TestRendererFactory(t *testing.T) {
