@@ -48,7 +48,7 @@ func (r *HelmRenderer) renderSDK(ctx context.Context, app discovery.DiscoveredAp
 	actionCfg := action.NewConfiguration()
 
 	// Always wire up an OCI registry client so oci:// chart URLs work.
-	registryClient, err := registry.NewClient()
+	registryClient, err := registry.NewClient(registry.ClientOptCredentialsFile(settings.RegistryConfig))
 	if err != nil {
 		return nil, fmt.Errorf("creating helm registry client: %w", err)
 	}
