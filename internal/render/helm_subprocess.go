@@ -11,7 +11,7 @@ import (
 )
 
 // renderHelmSubprocess renders a Helm chart using the `helm template` CLI command.
-func renderHelmSubprocess(ctx context.Context, app discovery.DiscoveredApp) ([]manifest.Manifest, error) {
+func renderHelmSubprocess(ctx context.Context, app discovery.DiscoveredApp, apiVersions []string) ([]manifest.Manifest, error) {
 	ns := namespace(app)
 	release := releaseName(app)
 
@@ -35,6 +35,9 @@ func renderHelmSubprocess(ctx context.Context, app discovery.DiscoveredApp) ([]m
 		args = append(args, "--version", app.ChartVersion)
 	}
 
+	for _, v := range apiVersions {
+		args = append(args, "--api-versions", v)
+	}
 	for _, vf := range app.ValuesFiles {
 		args = append(args, "--values", vf)
 	}

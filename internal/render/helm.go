@@ -36,7 +36,7 @@ func (r *HelmRenderer) Render(ctx context.Context, app discovery.DiscoveredApp) 
 	}
 
 	if r.cfg.Render.SubprocessFallback {
-		return renderHelmSubprocess(ctx, app)
+		return renderHelmSubprocess(ctx, app, r.cfg.Render.Helm.APIVersions)
 	}
 
 	return r.renderSDK(ctx, app)

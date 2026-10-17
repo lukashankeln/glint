@@ -75,8 +75,11 @@ render:
     kubernetes_version: "1.36.0"   # Sets .Capabilities.KubeVersion
     include_crds: true             # Include CRD manifests in output
     api_versions: []               # Extra entries for .Capabilities.APIVersions
+    discover_api_versions: true    # Add API versions of CRDs found while rendering
     timeout: "120s"                # Per-chart render timeout
 ```
+
+glint renders offline, so `.Capabilities.APIVersions` only contains the built-in Kubernetes APIs. Charts that gate resources on a CRD (e.g. `monitoring.coreos.com/v1` for ServiceMonitors) either fail or silently omit them. With `discover_api_versions`, glint collects the API versions of every CustomResourceDefinition in the rendered output (from CRD charts, `crds/` directories with `include_crds`, or committed CRD manifests) and renders Helm charts a second time with them. `api_versions` covers CRDs that are installed outside the scanned repository.
 
 ### Kustomize
 
