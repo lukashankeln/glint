@@ -62,26 +62,54 @@ func printDiscoverText(cmd *cobra.Command, paths []string, apps []discovery.Disc
 
 	fmt.Fprintf(w, "Discovered %d app(s) in %s\n\n", len(apps), strings.Join(paths, ", "))
 
+	cwd, _ := os.Getwd()
+
 	tw := tabwriter.NewWriter(w, 0, 0, 3, ' ', 0)
-	fmt.Fprintln(tw, "  NAME\tRENDERER\tFRAMEWORK\tPATH")
-	fmt.Fprintln(tw, "  ────\t────────\t─────────\t────")
+	fmt.Fprintln(tw, "  NAME\tRENDERER\tFRAMEWORK\tTARGET\tSOURCE")
+	fmt.Fprintln(tw, "  ────\t────────\t─────────\t──────\t──────")
 
 	for _, app := range apps {
-		path := app.RootPath
-		// Make path relative to cwd for readability.
-		if cwd, err := os.Getwd(); err == nil {
-			if rel, err := relativePath(cwd, path); err == nil {
-				path = rel
-			}
+		source := ""
+		if app.Source != nil && app.Source.Path != "" {
+			source = displayPath(cwd, app.Source.Path)
 		}
-		fmt.Fprintf(tw, "  %s\t%s\t(%s)\t%s\n",
+		fmt.Fprintf(tw, "  %s\t%s\t(%s)\t%s\t%s\n",
 			app.Name,
 			string(app.Renderer),
 			string(app.Framework),
-			path,
+			renderTarget(cwd, app),
+			source,
 		)
 	}
 	return tw.Flush()
+}
+
+// renderTarget describes what gets rendered: a local directory or a remote chart reference.
+func renderTarget(cwd string, app discovery.DiscoveredApp) string {
+	if app.RootPath != "" {
+		return displayPath(cwd, app.RootPath)
+	}
+	if app.ChartName == "" {
+		return ""
+	}
+	target := app.ChartName
+	if app.RepoURL != "" {
+		target = strings.TrimSuffix(app.RepoURL, "/") + "/" + app.ChartName
+	}
+	if app.ChartVersion != "" {
+		target += "@" + app.ChartVersion
+	}
+	return target
+}
+
+func displayPath(cwd, path string) string {
+	if cwd == "" {
+		return path
+	}
+	if rel, err := relativePath(cwd, path); err == nil {
+		return rel
+	}
+	return path
 }
 
 func printDiscoverJSON(cmd *cobra.Command, apps []discovery.DiscoveredApp) error {
