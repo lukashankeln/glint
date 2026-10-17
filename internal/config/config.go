@@ -66,7 +66,10 @@ type HelmRenderConfig struct {
 	KubernetesVersion string   `yaml:"kubernetes_version"`
 	IncludeCRDs       bool     `yaml:"include_crds"`
 	APIVersions       []string `yaml:"api_versions"`
-	Timeout           string   `yaml:"timeout"`
+	// DiscoverAPIVersions adds the API versions of all CRDs found while
+	// rendering to APIVersions and re-renders Helm charts with them.
+	DiscoverAPIVersions bool   `yaml:"discover_api_versions"`
+	Timeout             string `yaml:"timeout"`
 }
 
 type KustomizeRenderConfig struct {
@@ -195,9 +198,10 @@ func defaultConfig() *Config {
 		},
 		Render: RenderConfig{
 			Helm: HelmRenderConfig{
-				KubernetesVersion: DefaultKubernetesVersion,
-				IncludeCRDs:       true,
-				Timeout:           "120s",
+				KubernetesVersion:   DefaultKubernetesVersion,
+				IncludeCRDs:         true,
+				DiscoverAPIVersions: true,
+				Timeout:             "120s",
 			},
 			Kustomize: KustomizeRenderConfig{
 				EnableHelm:     false,
