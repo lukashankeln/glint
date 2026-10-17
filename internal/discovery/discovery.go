@@ -46,7 +46,8 @@ type pendingRelease struct {
 func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]DiscoveredApp, []ParseError, error) {
 	var apps []DiscoveredApp
 	var parseErrors []ParseError
-	seen := map[string]bool{} // deduplicate by RootPath
+	// Keys are RootPaths claimed by an app, plus gitopsKey values.
+	seen := map[string]bool{}
 	var filesScanned int
 
 	for _, root := range paths {
@@ -64,6 +65,9 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 		// YAML file paths are just collected here for parallel processing below.
 		var yamlFiles []string
 		skipDirs := map[string]bool{}
+		// Added after GitOps apps so a GitOps app claiming the same directory
+		// takes precedence and keeps its values, namespace and source.
+		var plainApps []DiscoveredApp
 
 		err = filepath.WalkDir(abs, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
@@ -88,20 +92,12 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 					return filepath.SkipDir
 				}
 				if isHelmChart(path) {
-					app := buildHelmApp(path, overrideMap)
-					if !seen[app.RootPath] {
-						seen[app.RootPath] = true
-						apps = append(apps, app)
-					}
+					plainApps = append(plainApps, buildHelmApp(path, overrideMap))
 					skipDirs[path] = true
 					return filepath.SkipDir
 				}
 				if isKustomizeOverlay(path) {
-					app := buildKustomizeApp(path, overrideMap)
-					if !seen[app.RootPath] {
-						seen[app.RootPath] = true
-						apps = append(apps, app)
-					}
+					plainApps = append(plainApps, buildKustomizeApp(path, overrideMap))
 				}
 				return nil
 			}
@@ -129,21 +125,26 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 			maps.Copy(helmRepos, fileResults[i].helmRepos)
 		}
 
-		// Phase 4: Merge results into the app list.
+		addGitOps := func(app DiscoveredApp) {
+			key := gitopsKey(app)
+			if seen[key] {
+				return
+			}
+			seen[key] = true
+			if app.RootPath != "" {
+				seen[app.RootPath] = true
+			}
+			apps = append(apps, app)
+		}
+
+		// Phase 4: Merge GitOps apps into the app list.
 		for i := range fileResults {
 			fr := &fileResults[i]
 
 			parseErrors = append(parseErrors, fr.parseErrors...)
 
 			for _, app := range fr.apps {
-				dedupKey := app.RootPath
-				if dedupKey == "" {
-					dedupKey = app.RepoURL + "/" + app.ChartName + "@" + app.Name
-				}
-				if !seen[dedupKey] {
-					seen[dedupKey] = true
-					apps = append(apps, app)
-				}
+				addGitOps(app)
 			}
 
 			// Resolve Flux HelmReleases now that the full helmRepos map is available.
@@ -158,14 +159,15 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 					slog.Debug("skipping Flux HelmRelease with unresolvable chart", "file", pr.sourceFile)
 					continue
 				}
-				dedupKey := app.RootPath
-				if dedupKey == "" {
-					dedupKey = app.RepoURL + "/" + app.ChartName + "@" + app.Name
-				}
-				if !seen[dedupKey] {
-					seen[dedupKey] = true
-					apps = append(apps, *app)
-				}
+				addGitOps(*app)
+			}
+		}
+
+		// Plain Helm charts and Kustomize overlays not claimed by a GitOps app.
+		for _, app := range plainApps {
+			if !seen[app.RootPath] {
+				seen[app.RootPath] = true
+				apps = append(apps, app)
 			}
 		}
 
@@ -387,6 +389,15 @@ func buildOverrideMap(cfg *config.Config, repoRoot string) map[string]config.Dis
 		m[abs] = o
 	}
 	return m
+}
+
+// gitopsKey identifies a GitOps app by the document that defined it, so that
+// several apps rendering the same directory with different settings are kept.
+func gitopsKey(app DiscoveredApp) string {
+	if app.Source == nil {
+		return app.RootPath
+	}
+	return "gitops:" + app.Source.Path + "#" + app.Name + "#" + app.RootPath + "#" + app.ChartName
 }
 
 // findRepoRoot walks upward from dir looking for a .git directory.

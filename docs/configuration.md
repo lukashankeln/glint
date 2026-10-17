@@ -54,6 +54,8 @@ glint auto-detects the renderer for each app:
 - **Kustomize** — directory contains `kustomization.yaml`, or Flux Kustomization resource
 - **Raw** — plain YAML files, no templating
 
+When an ArgoCD Application or Flux resource renders a directory that would also be discovered on its own, the GitOps resource takes precedence, so its values, namespace and source are used. Several GitOps resources rendering the same directory are all kept.
+
 ---
 
 ## `render`
