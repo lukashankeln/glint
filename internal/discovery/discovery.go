@@ -20,18 +20,19 @@ import (
 // fileResult holds everything extracted from a single YAML file during the
 // parallel processing phase.
 type fileResult struct {
-	apps            []DiscoveredApp
-	helmRepos       map[string]string // namespace/name -> url
-	pendingReleases []pendingRelease
-	rawDir          string
-	parseErrors     []ParseError
+	apps        []DiscoveredApp
+	fluxSources map[string]fluxSource // see fluxSourceKey
+	pendingFlux []pendingFlux
+	rawDir      string
+	parseErrors []ParseError
 }
 
-// pendingRelease holds a raw Flux HelmRelease document whose sourceRef cannot
-// be resolved until all HelmRepository objects across all files are known.
-type pendingRelease struct {
+// pendingFlux holds a raw Flux HelmRelease or Kustomization document whose
+// references cannot be resolved until the source objects across all files are
+// known.
+type pendingFlux struct {
+	kind       string // lowercase
 	raw        []byte
-	repoRoot   string
 	sourceFile string
 }
 
@@ -120,10 +121,10 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 		// Phase 2: Parse all YAML files concurrently.
 		fileResults := parseFilesParallel(ctx, yamlFiles, repoRoot, repoURLs)
 
-		// Phase 3: Build the complete HelmRepository map from all parsed files.
-		helmRepos := make(map[string]string)
+		// Phase 3: Index the Flux source objects from all parsed files.
+		res := fluxResolver{sources: map[string]fluxSource{}, repoURLs: repoURLs}
 		for i := range fileResults {
-			maps.Copy(helmRepos, fileResults[i].helmRepos)
+			maps.Copy(res.sources, fileResults[i].fluxSources)
 		}
 
 		addGitOps := func(app DiscoveredApp) {
@@ -138,7 +139,8 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 			apps = append(apps, app)
 		}
 
-		// Phase 4: Merge GitOps apps into the app list.
+		// Phase 4: Merge GitOps apps, resolving Flux references now that all
+		// source objects are known.
 		for i := range fileResults {
 			fr := &fileResults[i]
 
@@ -148,19 +150,24 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 				addGitOps(app)
 			}
 
-			// Resolve Flux HelmReleases now that the full helmRepos map is available.
-			for _, pr := range fr.pendingReleases {
-				app, err := parseFluxHelmRelease(pr.raw, pr.repoRoot, pr.sourceFile, helmRepos)
+			for _, pf := range fr.pendingFlux {
+				var app *DiscoveredApp
+				var err error
+				label := "Flux HelmRelease"
+				if pf.kind == "kustomization" {
+					label = "Flux Kustomization"
+					app, err = parseFluxKustomization(pf.raw, repoRoot, pf.sourceFile, res)
+				} else {
+					app, err = parseFluxHelmRelease(pf.raw, repoRoot, pf.sourceFile, res)
+				}
 				if err != nil {
-					slog.Error("failed to parse Flux HelmRelease", "file", pr.sourceFile, "err", err)
-					parseErrors = append(parseErrors, ParseError{FilePath: pr.sourceFile, Message: err.Error()})
+					slog.Error("failed to parse "+label, "file", pf.sourceFile, "err", err)
+					parseErrors = append(parseErrors, ParseError{FilePath: pf.sourceFile, Message: err.Error()})
 					continue
 				}
-				if app == nil {
-					slog.Debug("skipping Flux HelmRelease with unresolvable chart", "file", pr.sourceFile)
-					continue
+				if app != nil {
+					addGitOps(*app)
 				}
-				addGitOps(*app)
 			}
 		}
 
@@ -290,35 +297,23 @@ func parseFile(ctx context.Context, path, repoRoot string, repoURLs map[string]b
 			result.apps = append(result.apps, *app)
 
 		case FrameworkFlux:
-			switch strings.ToLower(kind) {
-			case "helmrepository":
-				key, url, err := parseFluxHelmRepository(docBytes)
+			switch k := strings.ToLower(kind); k {
+			case "helmrepository", "gitrepository", "ocirepository", "helmchart":
+				key, src, err := parseFluxSource(docBytes)
 				if err != nil || key == "" {
 					continue
 				}
-				if result.helmRepos == nil {
-					result.helmRepos = make(map[string]string)
+				if result.fluxSources == nil {
+					result.fluxSources = make(map[string]fluxSource)
 				}
-				result.helmRepos[key] = url
+				result.fluxSources[key] = src
 
-			case "helmrelease":
-				result.pendingReleases = append(result.pendingReleases, pendingRelease{
+			case "helmrelease", "kustomization":
+				result.pendingFlux = append(result.pendingFlux, pendingFlux{
+					kind:       k,
 					raw:        docBytes,
-					repoRoot:   repoRoot,
 					sourceFile: path,
 				})
-
-			case "kustomization":
-				app, err := parseFluxKustomization(docBytes, repoRoot, path)
-				if err != nil {
-					slog.Error("failed to parse Flux Kustomization", "file", path, "err", err)
-					result.parseErrors = append(result.parseErrors, ParseError{FilePath: path, Message: err.Error()})
-					continue
-				}
-				if app == nil {
-					continue
-				}
-				result.apps = append(result.apps, *app)
 			}
 		}
 	}
