@@ -47,7 +47,7 @@ dockers_v2:
     images:
       - ghcr.io/lukashankeln/glint
     tags:
-      - "{{ .Version }}"
+      - "{{ .Tag }}"
       - latest
     platforms:
       - linux/amd64
