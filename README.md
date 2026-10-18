@@ -32,7 +32,12 @@ glint replaces all of that with a single step that understands your repository s
 
 ## Install
 
-**Go (recommended):**
+**Homebrew (recommended):**
+```bash
+brew install lukashankeln/tap/glint
+```
+
+**Go:**
 ```bash
 go install github.com/lukashankeln/glint/cmd/glint@latest
 ```
