@@ -48,20 +48,25 @@ discovery:
         set:
           image.tag: "1.2.3"
 
-  # Additional URLs of this repository. ArgoCD Applications whose repoURL
-  # matches the repository's git remotes (read from .git/config) or one of
-  # these aliases are rendered from the local working tree instead of being
-  # skipped as remote.
+  # Additional URLs of this repository. ArgoCD Applications and Flux
+  # GitRepositories whose URL matches the repository's git remotes (read from
+  # .git/config) or one of these aliases are rendered from the local working
+  # tree instead of being skipped as remote.
   repo_aliases:
     - "https://git.example.com/org/repo"
 ```
 
 glint auto-detects the renderer for each app:
-- **Helm** — directory contains `Chart.yaml`, or ArgoCD Application points to a Helm chart
-- **Kustomize** — directory contains `kustomization.yaml`, or Flux Kustomization resource
-- **Raw** — plain YAML files, no templating. ArgoCD `directory.recurse: true` includes subdirectories.
+- **Helm** — directory contains `Chart.yaml`, or ArgoCD Application / Flux HelmRelease points to a Helm chart
+- **Kustomize** — directory contains `kustomization.yaml`, or Flux Kustomization whose path contains one
+- **Raw** — plain YAML files, no templating. ArgoCD `directory.recurse: true` and Flux Kustomizations whose path has no `kustomization.yaml` include subdirectories.
 
 When an ArgoCD Application or Flux resource renders a directory that would also be discovered on its own, the GitOps resource takes precedence, so its values, namespace and source are used. Several GitOps resources rendering the same directory are all kept.
+
+Flux sourceRefs are resolved against the source objects found in the scanned paths:
+- A GitRepository is treated as this repository when its URL matches, when it is `flux-system/flux-system` (created by `flux bootstrap`), or when it is not defined in the scanned paths.
+- Resources whose source is a different GitRepository, an OCIRepository (for Kustomizations) or a Bucket are skipped and logged at info level.
+- HelmRelease `spec.chartRef` supports OCIRepository and HelmChart.
 
 ---
 

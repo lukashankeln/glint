@@ -2,20 +2,43 @@ package discovery
 
 import (
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 
 	"sigs.k8s.io/yaml"
 )
 
-// fluxHelmRepository is a minimal representation of a Flux HelmRepository CRD.
-type fluxHelmRepository struct {
+// fluxObjectRef is a Flux cross-object reference (sourceRef, chartRef).
+type fluxObjectRef struct {
+	Kind      string `json:"kind"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+}
+
+// fluxChartSpec is the chart template shared by HelmRelease.spec.chart.spec
+// and the HelmChart source.
+type fluxChartSpec struct {
+	Chart     string        `json:"chart"`   // local path or chart name
+	Version   string        `json:"version"` // chart version (for remote)
+	SourceRef fluxObjectRef `json:"sourceRef"`
+}
+
+// fluxSource is a minimal representation of the Flux source kinds glint
+// resolves: HelmRepository, GitRepository, OCIRepository and HelmChart.
+type fluxSource struct {
+	Kind     string `json:"kind"`
 	Metadata struct {
 		Name      string `json:"name"`
 		Namespace string `json:"namespace"`
 	} `json:"metadata"`
 	Spec struct {
 		URL string `json:"url"`
+		Ref struct {
+			Tag    string `json:"tag"`
+			SemVer string `json:"semver"`
+		} `json:"ref"`
+		fluxChartSpec
 	} `json:"spec"`
 }
 
@@ -27,16 +50,9 @@ type fluxHelmRelease struct {
 	} `json:"metadata"`
 	Spec struct {
 		Chart struct {
-			Spec struct {
-				Chart     string `json:"chart"`   // local path or chart name
-				Version   string `json:"version"` // chart version (for remote)
-				SourceRef struct {
-					Kind      string `json:"kind"`
-					Name      string `json:"name"`
-					Namespace string `json:"namespace"`
-				} `json:"sourceRef"`
-			} `json:"spec"`
+			Spec fluxChartSpec `json:"spec"`
 		} `json:"chart"`
+		ChartRef        fluxObjectRef  `json:"chartRef"`
 		TargetNamespace string         `json:"targetNamespace"`
 		Values          map[string]any `json:"values"`
 	} `json:"spec"`
@@ -49,34 +65,83 @@ type fluxKustomization struct {
 		Namespace string `json:"namespace"`
 	} `json:"metadata"`
 	Spec struct {
-		Path            string `json:"path"`
-		TargetNamespace string `json:"targetNamespace"`
+		Path            string        `json:"path"`
+		TargetNamespace string        `json:"targetNamespace"`
+		SourceRef       fluxObjectRef `json:"sourceRef"`
 	} `json:"spec"`
 }
 
-// parseFluxHelmRepository extracts the key ("namespace/name") and URL from a
-// Flux HelmRepository document. Returns ("", "", nil) if not a valid HelmRepository.
-func parseFluxHelmRepository(raw []byte) (key string, url string, err error) {
-	var repo fluxHelmRepository
-	if err := yaml.Unmarshal(raw, &repo); err != nil {
-		return "", "", fmt.Errorf("parsing Flux HelmRepository: %w", err)
+// fluxResolver resolves Flux references against the source objects found in
+// the scanned tree.
+type fluxResolver struct {
+	sources  map[string]fluxSource // see fluxSourceKey
+	repoURLs map[string]bool       // see loadRepoURLs
+}
+
+// fluxSourceKey identifies a source object by lowercase kind, namespace and name.
+func fluxSourceKey(kind, namespace, name string) string {
+	if namespace == "" {
+		namespace = "default"
 	}
-	if repo.Metadata.Name == "" || repo.Spec.URL == "" {
-		return "", "", nil
+	return strings.ToLower(kind) + "/" + namespace + "/" + name
+}
+
+// parseFluxSource decodes a source.toolkit.fluxcd.io document and returns its
+// key. Returns "" for documents without a name.
+func parseFluxSource(raw []byte) (string, fluxSource, error) {
+	var src fluxSource
+	if err := yaml.Unmarshal(raw, &src); err != nil {
+		return "", src, fmt.Errorf("parsing Flux %s: %w", src.Kind, err)
 	}
-	ns := repo.Metadata.Namespace
+	if src.Metadata.Name == "" {
+		return "", src, nil
+	}
+	return fluxSourceKey(src.Kind, src.Metadata.Namespace, src.Metadata.Name), src, nil
+}
+
+// lookup finds the object ref points to. defaultNS is the namespace of the
+// referring object, which Flux uses when ref.Namespace is empty.
+func (r fluxResolver) lookup(ref fluxObjectRef, defaultNS string) (fluxSource, bool) {
+	ns := ref.Namespace
 	if ns == "" {
-		ns = "default"
+		ns = defaultNS
 	}
-	return ns + "/" + repo.Metadata.Name, repo.Spec.URL, nil
+	src, ok := r.sources[fluxSourceKey(ref.Kind, ns, ref.Name)]
+	return src, ok
+}
+
+// isLocalGitSource reports whether a GitRepository ref points at the scanned
+// repository. GitRepositories created outside git (e.g. by `flux install`
+// plus a separately applied object) cannot be resolved and are assumed local.
+// flux-system/flux-system is the self-reference `flux bootstrap` creates, and
+// its URL often differs from the local remote (internal host, other scheme).
+func (r fluxResolver) isLocalGitSource(ref fluxObjectRef, defaultNS string) (bool, string) {
+	ns := ref.Namespace
+	if ns == "" {
+		ns = defaultNS
+	}
+	if ns == "flux-system" && ref.Name == "flux-system" {
+		return true, ""
+	}
+	src, ok := r.lookup(ref, defaultNS)
+	if !ok {
+		slog.Debug("GitRepository not found in scanned paths, assuming this repository", "name", ref.Name, "namespace", ns)
+		return true, ""
+	}
+	if r.repoURLs[normalizeGitURL(src.Spec.URL)] {
+		return true, ""
+	}
+	return false, src.Spec.URL
 }
 
 // parseFluxHelmRelease converts a Flux HelmRelease document into a DiscoveredApp.
 //
 // repoRoot is the local repository root. sourceFile is the .yaml file that
 // contained the HelmRelease manifest.
-// helmRepos maps "namespace/name" -> repo URL for HelmRepository resolution.
-func parseFluxHelmRelease(raw []byte, repoRoot, sourceFile string, helmRepos map[string]string) (*DiscoveredApp, error) {
+//
+// Returns nil if the chart cannot be resolved to a local path or a Helm
+// repository.
+func parseFluxHelmRelease(raw []byte, repoRoot, sourceFile string, res fluxResolver) (*DiscoveredApp, error) {
 	var hr fluxHelmRelease
 	if err := yaml.Unmarshal(raw, &hr); err != nil {
 		return nil, fmt.Errorf("parsing Flux HelmRelease: %w", err)
@@ -86,10 +151,8 @@ func parseFluxHelmRelease(raw []byte, repoRoot, sourceFile string, helmRepos map
 	if name == "" {
 		return nil, nil
 	}
-
-	chartRef := hr.Spec.Chart.Spec.Chart
-	if chartRef == "" {
-		return nil, nil
+	skip := func(reason string, args ...any) {
+		slog.Info("skipping Flux HelmRelease", append([]any{"app", name, "reason", reason, "file", sourceFile}, args...)...)
 	}
 
 	namespace := hr.Spec.TargetNamespace
@@ -97,73 +160,96 @@ func parseFluxHelmRelease(raw []byte, repoRoot, sourceFile string, helmRepos map
 		namespace = hr.Metadata.Namespace
 	}
 
-	var inlineValues map[string]any
-	if len(hr.Spec.Values) > 0 {
-		inlineValues = hr.Spec.Values
-	}
-
-	// Local chart path
-	if isLocalChartPath(chartRef) {
-		rootPath := filepath.Clean(filepath.Join(repoRoot, chartRef))
-		app := &DiscoveredApp{
-			Name:         name,
-			Framework:    FrameworkFlux,
-			Renderer:     RendererHelm,
-			RootPath:     rootPath,
-			Namespace:    namespace,
-			ReleaseName:  name,
-			InlineValues: inlineValues,
-			Source: &SourceRef{
-				Path: sourceFile,
-				Name: name,
-			},
-		}
-		app.ValuesFiles = discoverValuesFiles(rootPath)
-		return app, nil
-	}
-
-	// Remote chart — try to resolve via HelmRepository sourceRef
-	sourceRef := hr.Spec.Chart.Spec.SourceRef
-	if strings.ToLower(sourceRef.Kind) != "helmrepository" || sourceRef.Name == "" {
-		return nil, nil // can't resolve
-	}
-
-	// Determine the namespace to look up the HelmRepository
-	repoNS := sourceRef.Namespace
-	if repoNS == "" {
-		repoNS = hr.Metadata.Namespace
-	}
-	if repoNS == "" {
-		repoNS = "default"
-	}
-	repoKey := repoNS + "/" + sourceRef.Name
-
-	repoURL, ok := helmRepos[repoKey]
-	if !ok {
-		// HelmRepository not found in pre-scan — skip
-		return nil, nil
-	}
-
-	return &DiscoveredApp{
-		Name:         name,
-		Framework:    FrameworkFlux,
-		Renderer:     RendererHelm,
-		RootPath:     "",
-		RepoURL:      repoURL,
-		ChartName:    chartRef,
-		ChartVersion: hr.Spec.Chart.Spec.Version,
-		Namespace:    namespace,
-		ReleaseName:  name,
-		InlineValues: inlineValues,
+	app := &DiscoveredApp{
+		Name:        name,
+		Framework:   FrameworkFlux,
+		Renderer:    RendererHelm,
+		Namespace:   namespace,
+		ReleaseName: name,
 		Source: &SourceRef{
 			Path: sourceFile,
 			Name: name,
 		},
-	}, nil
+	}
+	if len(hr.Spec.Values) > 0 {
+		app.InlineValues = hr.Spec.Values
+	}
+
+	spec := hr.Spec.Chart.Spec
+	// Namespace that spec.SourceRef defaults to.
+	specNS := hr.Metadata.Namespace
+
+	if ref := hr.Spec.ChartRef; ref.Kind != "" {
+		src, ok := res.lookup(ref, hr.Metadata.Namespace)
+		if !ok {
+			skip("chartRef not found in scanned paths", "chartRef", ref.Kind+"/"+ref.Name)
+			return nil, nil
+		}
+		switch strings.ToLower(ref.Kind) {
+		case "ocirepository":
+			repoURL, chart := splitOCIChartURL(src.Spec.URL, "")
+			if chart == "" {
+				skip("OCIRepository URL does not name a chart", "url", src.Spec.URL)
+				return nil, nil
+			}
+			app.RepoURL = repoURL
+			app.ChartName = chart
+			app.ChartVersion = src.Spec.Ref.Tag
+			if app.ChartVersion == "" {
+				app.ChartVersion = src.Spec.Ref.SemVer
+			}
+			return app, nil
+		case "helmchart":
+			spec = src.Spec.fluxChartSpec
+			specNS = src.Metadata.Namespace
+		default:
+			skip("unsupported chartRef kind", "chartRef", ref.Kind+"/"+ref.Name)
+			return nil, nil
+		}
+	}
+
+	if spec.Chart == "" {
+		skip("no chart reference")
+		return nil, nil
+	}
+
+	switch strings.ToLower(spec.SourceRef.Kind) {
+	case "helmrepository":
+		src, ok := res.lookup(spec.SourceRef, specNS)
+		if !ok {
+			skip("HelmRepository not found in scanned paths", "sourceRef", spec.SourceRef.Name)
+			return nil, nil
+		}
+		app.RepoURL = src.Spec.URL
+		app.ChartName = spec.Chart
+		app.ChartVersion = spec.Version
+		return app, nil
+
+	case "gitrepository":
+		if local, url := res.isLocalGitSource(spec.SourceRef, specNS); !local {
+			skip("GitRepository is not this repository", "url", url)
+			return nil, nil
+		}
+
+	case "":
+		if !isLocalChartPath(spec.Chart) {
+			skip("chart has no sourceRef")
+			return nil, nil
+		}
+
+	default:
+		skip("unsupported sourceRef kind", "sourceRef", spec.SourceRef.Kind+"/"+spec.SourceRef.Name)
+		return nil, nil
+	}
+
+	app.RootPath = filepath.Clean(filepath.Join(repoRoot, spec.Chart))
+	app.ValuesFiles = discoverValuesFiles(app.RootPath)
+	return app, nil
 }
 
-// parseFluxKustomization converts a Flux Kustomization document into a DiscoveredApp.
-func parseFluxKustomization(raw []byte, repoRoot, sourceFile string) (*DiscoveredApp, error) {
+// parseFluxKustomization converts a Flux Kustomization document into a
+// DiscoveredApp. Returns nil if its source is not this repository.
+func parseFluxKustomization(raw []byte, repoRoot, sourceFile string, res fluxResolver) (*DiscoveredApp, error) {
 	var ks fluxKustomization
 	if err := yaml.Unmarshal(raw, &ks); err != nil {
 		return nil, fmt.Errorf("parsing Flux Kustomization: %w", err)
@@ -171,6 +257,17 @@ func parseFluxKustomization(raw []byte, repoRoot, sourceFile string) (*Discovere
 
 	name := ks.Metadata.Name
 	if name == "" {
+		return nil, nil
+	}
+
+	switch ref := ks.Spec.SourceRef; strings.ToLower(ref.Kind) {
+	case "", "gitrepository":
+		if local, url := res.isLocalGitSource(ref, ks.Metadata.Namespace); !local {
+			slog.Info("skipping Flux Kustomization", "app", name, "reason", "GitRepository is not this repository", "url", url, "file", sourceFile)
+			return nil, nil
+		}
+	default:
+		slog.Info("skipping Flux Kustomization", "app", name, "reason", "source is not a git repository", "sourceRef", ref.Kind+"/"+ref.Name, "file", sourceFile)
 		return nil, nil
 	}
 
@@ -185,7 +282,7 @@ func parseFluxKustomization(raw []byte, repoRoot, sourceFile string) (*Discovere
 		namespace = ks.Metadata.Namespace
 	}
 
-	return &DiscoveredApp{
+	app := &DiscoveredApp{
 		Name:      name,
 		Framework: FrameworkFlux,
 		Renderer:  RendererKustomize,
@@ -195,7 +292,14 @@ func parseFluxKustomization(raw []byte, repoRoot, sourceFile string) (*Discovere
 			Path: sourceFile,
 			Name: name,
 		},
-	}, nil
+	}
+	// kustomize-controller generates a kustomization covering all manifests
+	// below the path when none exists.
+	if !isKustomizeOverlay(rootPath) {
+		app.Renderer = RendererRaw
+		app.Recurse = true
+	}
+	return app, nil
 }
 
 // isLocalChartPath reports whether ref looks like a local filesystem path
