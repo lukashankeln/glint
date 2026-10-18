@@ -1,0 +1,5 @@
+FROM alpine:3.24.2
+ARG TARGETPLATFORM
+RUN apk add --no-cache ca-certificates
+COPY ${TARGETPLATFORM}/glint /usr/local/bin/glint
+ENTRYPOINT ["glint"]

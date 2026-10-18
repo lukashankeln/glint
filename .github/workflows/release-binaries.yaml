@@ -1,0 +1,59 @@
+name: GoReleaser
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Generate a token
+        id: generate-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PEM }}
+          owner: ${{ github.repository_owner }}
+          repositories: |
+            glint
+            homebrew-tap
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          token: ${{ steps.generate-token.outputs.token }}
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Login to ghcr.io
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ steps.generate-token.outputs.token }}
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          distribution: goreleaser
+          version: "~> 2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}

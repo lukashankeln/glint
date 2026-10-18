@@ -1,0 +1,68 @@
+version: 2
+
+project_name: glint
+
+builds:
+  - id: glint
+    main: ./cmd/glint
+    binary: glint
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/lukashankeln/glint/internal/version.Version={{ .Version }}
+      - -X github.com/lukashankeln/glint/internal/version.Commit={{ .Commit }}
+      - -X github.com/lukashankeln/glint/internal/version.Date={{ .Date }}
+
+archives:
+  - id: glint
+    ids:
+      - glint
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Os }}_{{ .Arch }}
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  disable: true
+
+release:
+  # release-please already creates the GitHub Release for this tag;
+  # just attach archives/checksums to it instead of creating a new one.
+  mode: append
+
+dockers_v2:
+  - ids:
+      - glint
+    dockerfile: Dockerfile.goreleaser
+    images:
+      - ghcr.io/lukashankeln/glint
+    tags:
+      - "{{ .Version }}"
+      - latest
+    platforms:
+      - linux/amd64
+      - linux/arm64
+
+homebrew_casks:
+  - name: glint
+    ids:
+      - glint
+    binaries:
+      - glint
+    repository:
+      owner: lukashankeln
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: "https://github.com/lukashankeln/glint"
+    description: "GitOps linter — auto-render Helm/Kustomize and validate with CEL policies"
