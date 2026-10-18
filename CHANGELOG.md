@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.4](https://github.com/lukashankeln/glint/compare/v0.2.3...v0.2.4) (2026-10-18)
+
+
+### Features
+
+* **cli:** show render target and source document in discover output ([06b23d0](https://github.com/lukashankeln/glint/commit/06b23d0e18b2f0240cff4a9a0bcadf27626b160c))
+* **discovery:** render ArgoCD Applications that point at the scanned repository ([b6b0ab3](https://github.com/lukashankeln/glint/commit/b6b0ab3fb085ce44eb176a04c4cded2cf9f35876))
+* **discovery:** support ArgoCD directory.recurse for raw sources ([b1077e7](https://github.com/lukashankeln/glint/commit/b1077e710de1386228f5ff0c0359cf84a0e4728e))
+* **discovery:** support ArgoCD OCI sources with the chart in repoURL ([ead54bd](https://github.com/lukashankeln/glint/commit/ead54bdbc234181829ced4a5abeae7c049c47d93))
+* **render:** advertise API versions of discovered CRDs to Helm ([b0259d4](https://github.com/lukashankeln/glint/commit/b0259d49ca791e4e2d66026a4cbe3f83fb066c17))
+
+
+### Bug Fixes
+
+* **deps:** update kube-the-home/github-actions action to v1.4.15 ([564d1c1](https://github.com/lukashankeln/glint/commit/564d1c18a0dce315ed570b2b6643f97bd13ee45d))
+* **deps:** update kube-the-home/github-actions action to v1.4.16 ([394e339](https://github.com/lukashankeln/glint/commit/394e339b4a9ab2e9aa49c21a81b1d169c744b808))
+* **deps:** update module helm.sh/helm/v4 to v4.3.1 ([ed62244](https://github.com/lukashankeln/glint/commit/ed622446849e98f7d5c5d799cfeccf48f54a40ad))
+* **discovery:** pass repoURLs arg in ArgoCD OCI test ([caa5a11](https://github.com/lukashankeln/glint/commit/caa5a11cefb0d8093133d475c54f2593d9b4e6b4))
+* **discovery:** prefer GitOps apps over plain discovery of the same directory ([1f5870a](https://github.com/lukashankeln/glint/commit/1f5870a1b8581213f0d719af3a46721e97275c51))
+* **render:** honor HELM_REGISTRY_CONFIG for OCI chart pulls ([7d52681](https://github.com/lukashankeln/glint/commit/7d52681bb8486c5913a62baf2cae178013d40214))
+
 ## [0.2.3](https://github.com/lukashankeln/glint/compare/v0.2.2...v0.2.3) (2026-10-13)
 
 
