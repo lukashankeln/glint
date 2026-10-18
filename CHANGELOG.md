@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.7](https://github.com/lukashankeln/glint/compare/v0.2.6...v0.2.7) (2026-10-18)
+
+
+### Bug Fixes
+
+* tag images with a v prefixed version again ([959638e](https://github.com/lukashankeln/glint/commit/959638e1092f6cfe992b114049dfb7d080408357))
+
 ## [0.2.6](https://github.com/lukashankeln/glint/compare/v0.2.5...v0.2.6) (2026-10-18)
 
 
