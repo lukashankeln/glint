@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.6](https://github.com/lukashankeln/glint/compare/v0.2.5...v0.2.6) (2026-10-18)
+
+
+### Bug Fixes
+
+* publish via github actions token ([2ab3e8d](https://github.com/lukashankeln/glint/commit/2ab3e8d9aaf0535a44ca439a27f049d1bbf8ef23))
+
 ## [0.2.5](https://github.com/lukashankeln/glint/compare/v0.2.4...v0.2.5) (2026-10-18)
 
 
