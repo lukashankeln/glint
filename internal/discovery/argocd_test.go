@@ -24,7 +24,7 @@ spec:
     namespace: media
 `)
 
-	app, err := parseArgoCDApplication(raw, "/repo", "/repo/apps/calibre-web.yaml")
+	app, err := parseArgoCDApplication(raw, "/repo", "/repo/apps/calibre-web.yaml", nil)
 	require.NoError(t, err)
 	require.NotNil(t, app)
 	assert.Equal(t, RendererHelm, app.Renderer)
