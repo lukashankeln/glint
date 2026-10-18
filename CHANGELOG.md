@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.5](https://github.com/lukashankeln/glint/compare/v0.2.4...v0.2.5) (2026-10-18)
+
+
+### Features
+
+* add pre-commit hooks ([160414e](https://github.com/lukashankeln/glint/commit/160414e1851b416634850cae288dc2dbe7057606))
+* **discovery:** resolve Flux sources for HelmReleases and Kustomizations ([b565222](https://github.com/lukashankeln/glint/commit/b565222acd4f5171cca4b559d7e81bdddc117ce7))
+* swith to go releaser and also publish as homebrew package ([863f044](https://github.com/lukashankeln/glint/commit/863f044e6be8d8e7e7abb66010e50743ee4e2d0c)), closes [#81](https://github.com/lukashankeln/glint/issues/81)
+
 ## [0.2.4](https://github.com/lukashankeln/glint/compare/v0.2.3...v0.2.4) (2026-10-18)
 
 
