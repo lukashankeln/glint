@@ -12,7 +12,7 @@
   name: glint (docker)
   description: Lint GitOps manifests (Helm, Kustomize, plain YAML) with CEL policies
   language: docker_image
-  entry: ghcr.io/lukashankeln/glint:v0.2.5 lint # x-release-please-version
+  entry: ghcr.io/lukashankeln/glint:v0.2.6 lint # x-release-please-version
   pass_filenames: false
   require_serial: true
   files: \.(ya?ml|json|tpl)$
