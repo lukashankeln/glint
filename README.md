@@ -122,6 +122,23 @@ jobs:
 
 ---
 
+## pre-commit
+
+Add to `.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: https://github.com/lukashankeln/glint
+    rev: v0.2.3
+    hooks:
+      - id: glint         # builds from source, requires Go
+      # - id: glint-docker  # uses the published container image, requires Docker
+```
+
+The hook lints the whole repository whenever a staged `.yaml`, `.yml`, `.json` or `.tpl` file changes. Pass extra flags via `args`, e.g. `args: [--fail-on, "error,warning"]`.
+
+---
+
 ## Configuration
 
 glint reads `glint.yaml` from the working directory. Run `glint init` to generate a starter config.

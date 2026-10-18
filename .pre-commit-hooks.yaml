@@ -1,0 +1,18 @@
+- id: glint
+  name: glint
+  description: Lint GitOps manifests (Helm, Kustomize, plain YAML) with CEL policies
+  entry: glint lint
+  language: golang
+  # Rendering resolves whole apps, so linting individual staged files is meaningless.
+  pass_filenames: false
+  require_serial: true
+  files: \.(ya?ml|json|tpl)$
+
+- id: glint-docker
+  name: glint (docker)
+  description: Lint GitOps manifests (Helm, Kustomize, plain YAML) with CEL policies
+  language: docker_image
+  entry: ghcr.io/lukashankeln/glint:v0.2.3 lint # x-release-please-version
+  pass_filenames: false
+  require_serial: true
+  files: \.(ya?ml|json|tpl)$

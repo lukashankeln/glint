@@ -10,6 +10,10 @@
         },
         {
           "type": "generic",
+          "path": ".pre-commit-hooks.yaml"
+        },
+        {
+          "type": "generic",
           "path": "internal/version/version.go"
         }
       ],
