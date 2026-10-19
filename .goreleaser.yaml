@@ -66,3 +66,7 @@ homebrew_casks:
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     homepage: "https://github.com/lukashankeln/glint"
     description: "GitOps linter — auto-render Helm/Kustomize and validate with CEL policies"
+    hooks:
+      post:
+        install: |
+          system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/glint"]
