@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.8](https://github.com/lukashankeln/glint/compare/v0.2.7...v0.2.8) (2026-10-19)
+
+
+### Bug Fixes
+
+* strip quarantine xattr from brew-installed binary ([77ed6c3](https://github.com/lukashankeln/glint/commit/77ed6c39c069952c779d592df49980ebdff1522f))
+
 ## [0.2.7](https://github.com/lukashankeln/glint/compare/v0.2.6...v0.2.7) (2026-10-18)
 
 
