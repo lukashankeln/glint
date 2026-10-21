@@ -2,6 +2,9 @@ package render
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
+	"io"
 	"strings"
 
 	"log/slog"
@@ -15,6 +18,7 @@ import (
 // SplitYAML splits a multi-document YAML stream into individual Manifest objects.
 // Documents without apiVersion/kind are skipped with a debug log.
 // Empty documents and comment-only docs are skipped silently.
+// A malformed document returns an error rather than being dropped.
 func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([]manifest.Manifest, error) {
 	var manifests []manifest.Manifest
 
@@ -22,7 +26,10 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 	for {
 		var node yaml.Node
 		if err := dec.Decode(&node); err != nil {
-			break // EOF
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, fmt.Errorf("decoding YAML document: %w", err)
 		}
 		if node.Kind == 0 {
 			continue // empty doc

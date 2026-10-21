@@ -167,6 +167,18 @@ func TestRawRenderer_Recurse(t *testing.T) {
 	assert.ElementsMatch(t, []string{"top", "inner"}, names(true))
 }
 
+func TestRawRenderer_MalformedFileErrors(t *testing.T) {
+	dir := t.TempDir()
+	bad := filepath.Join(dir, "bad.yaml")
+	content := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: ok\n---\nfoo: [unclosed\n"
+	require.NoError(t, os.WriteFile(bad, []byte(content), 0o644))
+
+	app := discovery.DiscoveredApp{Name: "raw", Renderer: discovery.RendererRaw, RootPath: dir}
+	_, err := New(app, defaultCfg()).Render(context.Background(), app)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), bad)
+}
+
 func TestRendererFactory(t *testing.T) {
 	cfg := defaultCfg()
 
