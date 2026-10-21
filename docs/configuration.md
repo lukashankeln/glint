@@ -18,7 +18,6 @@ If no config file is found, glint runs with built-in defaults. Run `glint init` 
 | `version` | string | `v1alpha1` | Config schema version |
 | `discovery` | object | — | Controls what glint scans |
 | `render` | object | — | Renderer settings |
-| `schema` | object | — | Schema validation settings |
 | `rules` | object | — | Policy rule configuration |
 | `output` | object | — | Output formatting |
 | `fail_on` | []string | `[error]` | Severities that produce exit code 1 |
@@ -117,7 +116,7 @@ rules:
       severity: error     # error | warning | info
 
     resource_requests:
-      enabled: false      # disabled by default
+      enabled: true       # enabled by default
       severity: warning
       params:
         init_containers: true   # false = only regular containers need requests
@@ -155,7 +154,7 @@ rules:
     - "../shared-policies/security.yaml"
 ```
 
-Each file contains a list of rule definitions using the same schema as `custom` above.
+Each file contains a `rules:` list of rule definitions (or a single rule) using the same schema as `custom` above.
 
 ### Exceptions
 
