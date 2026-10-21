@@ -178,3 +178,21 @@ func TestHelmSetToValues(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "8080", svcMap["port"])
 }
+
+func TestSplitYAML_MalformedDocumentReturnsError(t *testing.T) {
+	data := []byte(`apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cm1
+---
+foo: [unclosed
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+`)
+	manifests, err := SplitYAML(data, "app", "bad.yaml", false)
+	require.Error(t, err)
+	assert.Nil(t, manifests)
+}
