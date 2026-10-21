@@ -83,7 +83,6 @@ The `message` field is a Go `text/template`. Available variables:
 | `{{ .name }}` | Resource name |
 | `{{ .namespace }}` | Resource namespace |
 | `{{ .apiVersion }}` | API version |
-| `{{ .severity }}` | Rule severity |
 
 ---
 
@@ -230,10 +229,11 @@ Share policies across repositories by putting rules in standalone YAML files:
 
 ```yaml
 # policies/security.yaml
-- id: no-privileged
-  ...
-- id: no-nodeport
-  ...
+rules:
+  - id: no-privileged
+    ...
+  - id: no-nodeport
+    ...
 ```
 
 Reference them from `glint.yaml`:
