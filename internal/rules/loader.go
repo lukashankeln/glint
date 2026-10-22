@@ -118,10 +118,13 @@ func LoadRuleFiles(patterns []string) ([]RuleDef, error) {
 func LoadCustomInline(cfg config.RulesConfig) ([]RuleDef, error) {
 	var rules []RuleDef
 	for _, c := range cfg.Custom {
+		if c.Severity != "" && !config.ValidSeverity(c.Severity) {
+			return nil, fmt.Errorf("rule %q: unknown severity %q (must be error, warning, or info)", c.ID, c.Severity)
+		}
 		def := RuleDef{
 			ID:          c.ID,
 			Description: c.Description,
-			Severity:    Severity(c.Severity),
+			Severity:    Severity(strings.ToLower(c.Severity)),
 			Enabled:     true,
 			Match: MatchFilter{
 				Kinds:             c.Match.Kinds,
@@ -158,6 +161,9 @@ func loadRuleFile(path string) ([]RuleDef, error) {
 			if ry.ID == "" {
 				continue
 			}
+			if ry.Severity != "" && !config.ValidSeverity(ry.Severity) {
+				return nil, fmt.Errorf("rule file %q: rule %q: unknown severity %q (must be error, warning, or info)", path, ry.ID, ry.Severity)
+			}
 			def := ruleYAMLToDef(ry, path)
 			def.Enabled = true
 			def.Expression = preprocessExpression(def.Expression)
@@ -174,6 +180,9 @@ func loadRuleFile(path string) ([]RuleDef, error) {
 	if ry.ID == "" {
 		return nil, nil
 	}
+	if ry.Severity != "" && !config.ValidSeverity(ry.Severity) {
+		return nil, fmt.Errorf("rule file %q: rule %q: unknown severity %q (must be error, warning, or info)", path, ry.ID, ry.Severity)
+	}
 	def := ruleYAMLToDef(ry, path)
 	def.Enabled = true
 	def.Expression = preprocessExpression(def.Expression)
@@ -181,7 +190,7 @@ func loadRuleFile(path string) ([]RuleDef, error) {
 }
 
 func ruleYAMLToDef(ry ruleYAML, source string) RuleDef {
-	sev := Severity(ry.Severity)
+	sev := Severity(strings.ToLower(ry.Severity))
 	if sev == "" {
 		sev = SeverityError
 	}
@@ -221,7 +230,7 @@ func applyBuiltInOverride(def RuleDef, cfg config.RulesConfig) RuleDef {
 	}
 	def.Enabled = override.Enabled
 	if override.Severity != "" {
-		def.Severity = Severity(override.Severity)
+		def.Severity = Severity(strings.ToLower(override.Severity))
 	}
 	return def
 }

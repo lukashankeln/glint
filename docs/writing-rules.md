@@ -24,6 +24,8 @@ rules:
       message: "{{ .kind }}/{{ .name }} requires replicas >= 2"
 ```
 
+Severity values are case-insensitive. Unknown values are rejected when loading config or rule files, and `glint rules validate` exits with an error.
+
 ---
 
 ## CEL variables
