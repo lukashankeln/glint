@@ -126,6 +126,8 @@ rules:
       severity: error
 ```
 
+Severity values are case-insensitive. Unknown values are rejected when loading config or rule files, and `glint rules validate` exits with an error.
+
 ### Custom inline rules
 
 ```yaml
