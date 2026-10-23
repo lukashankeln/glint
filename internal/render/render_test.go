@@ -6,12 +6,14 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/lukashankeln/glint/internal/config"
 	"github.com/lukashankeln/glint/internal/discovery"
+	"github.com/lukashankeln/glint/internal/manifest"
 )
 
 func testdataPath(name string) string {
@@ -244,4 +246,50 @@ func TestNormalizeRepoURL(t *testing.T) {
 			assert.Equal(t, tt.want, normalizeRepoURL(tt.input))
 		})
 	}
+}
+
+// assertRenderTimesOut runs render with an SDK stand-in that ignores its
+// context and blocks, so only runWithContext can return control.
+func assertRenderTimesOut(t *testing.T, render func(block func(context.Context, discovery.DiscoveredApp) ([]manifest.Manifest, error)) error) {
+	t.Helper()
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	block := func(context.Context, discovery.DiscoveredApp) ([]manifest.Manifest, error) {
+		<-release
+		return nil, nil
+	}
+	done := make(chan error, 1)
+	go func() { done <- render(block) }()
+	select {
+	case err := <-done:
+		require.Error(t, err)
+		assert.ErrorIs(t, err, context.DeadlineExceeded)
+		assert.Contains(t, err.Error(), "timed out")
+	case <-time.After(5 * time.Second):
+		t.Fatal("Render did not return after its timeout; blocking SDK render was not abandoned")
+	}
+}
+
+func TestHelmRenderer_TimeoutAbandonsBlockedSDK(t *testing.T) {
+	cfg := defaultCfg()
+	cfg.Render.Helm.Timeout = "50ms"
+	app := discovery.DiscoveredApp{Name: "frontend"}
+	assertRenderTimesOut(t, func(block func(context.Context, discovery.DiscoveredApp) ([]manifest.Manifest, error)) error {
+		r := newHelmRenderer(cfg)
+		r.sdk = block
+		_, err := r.Render(context.Background(), app)
+		return err
+	})
+}
+
+func TestKustomizeRenderer_TimeoutAbandonsBlockedSDK(t *testing.T) {
+	cfg := defaultCfg()
+	cfg.Render.Kustomize.Timeout = "50ms"
+	app := discovery.DiscoveredApp{Name: "base"}
+	assertRenderTimesOut(t, func(block func(context.Context, discovery.DiscoveredApp) ([]manifest.Manifest, error)) error {
+		r := newKustomizeRenderer(cfg)
+		r.sdk = block
+		_, err := r.Render(context.Background(), app)
+		return err
+	})
 }

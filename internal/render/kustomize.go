@@ -16,11 +16,15 @@ import (
 // KustomizeRenderer renders Kustomize overlays using the krusty SDK.
 type KustomizeRenderer struct {
 	cfg *config.Config
+	// sdk is the in-process render; a field so tests can substitute a blocking one.
+	sdk func(context.Context, discovery.DiscoveredApp) ([]manifest.Manifest, error)
 }
 
 // newKustomizeRenderer creates a KustomizeRenderer.
 func newKustomizeRenderer(cfg *config.Config) *KustomizeRenderer {
-	return &KustomizeRenderer{cfg: cfg}
+	r := &KustomizeRenderer{cfg: cfg}
+	r.sdk = r.renderSDK
+	return r
 }
 
 // Render renders the given Kustomize app and returns manifests.
@@ -40,7 +44,7 @@ func (r *KustomizeRenderer) Render(ctx context.Context, app discovery.Discovered
 		manifests, err = renderKustomizeSubprocess(tctx, app)
 	} else {
 		manifests, err = runWithContext(tctx, func() ([]manifest.Manifest, error) {
-			return r.renderSDK(tctx, app)
+			return r.sdk(tctx, app)
 		})
 	}
 	if err != nil {

@@ -26,7 +26,9 @@ func withRenderTimeout(ctx context.Context, timeout string) (context.Context, co
 // done, whichever comes first. krusty.Run takes no context and helm's
 // LocateChart and loader.Load are not context-aware, so on cancellation the
 // goroutine is abandoned and keeps running (for example finishing a chart
-// download into the helm cache) until the CLI exits.
+// download into the helm cache) until the CLI exits. Abandoned goroutines are not bounded by the caller's
+// worker pool, so many hung renders can exceed its concurrency, and a later
+// render pass (discover_api_versions) may overlap one that is still running.
 func runWithContext[T any](ctx context.Context, fn func() (T, error)) (T, error) {
 	type result struct {
 		val T

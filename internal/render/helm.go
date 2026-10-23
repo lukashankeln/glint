@@ -22,11 +22,15 @@ import (
 // HelmRenderer renders Helm charts using the Helm SDK.
 type HelmRenderer struct {
 	cfg *config.Config
+	// sdk is the in-process render; a field so tests can substitute a blocking one.
+	sdk func(context.Context, discovery.DiscoveredApp) ([]manifest.Manifest, error)
 }
 
 // newHelmRenderer creates a HelmRenderer.
 func newHelmRenderer(cfg *config.Config) *HelmRenderer {
-	return &HelmRenderer{cfg: cfg}
+	r := &HelmRenderer{cfg: cfg}
+	r.sdk = r.renderSDK
+	return r
 }
 
 // Render renders the given app with Helm and returns manifests.
@@ -46,7 +50,7 @@ func (r *HelmRenderer) Render(ctx context.Context, app discovery.DiscoveredApp) 
 		manifests, err = renderHelmSubprocess(tctx, app, r.cfg.Render.Helm.APIVersions)
 	} else {
 		manifests, err = runWithContext(tctx, func() ([]manifest.Manifest, error) {
-			return r.renderSDK(tctx, app)
+			return r.sdk(tctx, app)
 		})
 	}
 	if err != nil {
