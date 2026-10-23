@@ -179,6 +179,65 @@ func TestHelmSetToValues(t *testing.T) {
 	assert.Equal(t, "8080", svcMap["port"])
 }
 
+func TestSplitYAML_TypeFidelity(t *testing.T) {
+	// Locks in JSON-compatible typing (matching sigs.k8s.io/yaml's behavior,
+	// which the hand-rolled node-to-value conversion replaced): numbers
+	// normalize to float64, and date-like scalars stay strings rather than
+	// being parsed into time.Time (a generic go-yaml decode quirk that would
+	// silently corrupt label/annotation values).
+	data := []byte(`
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cm1
+  annotations:
+    date: 2024-01-01
+    big: "9223372036854775807"
+data:
+  replicas: 3
+  ratio: 1.5
+  flag: true
+  empty: null
+`)
+	manifests, err := SplitYAML(data, "app", "file.yaml", false)
+	require.NoError(t, err)
+	require.Len(t, manifests, 1)
+
+	meta := manifests[0].Object["metadata"].(map[string]any)
+	ann := meta["annotations"].(map[string]any)
+	assert.IsType(t, "", ann["date"])
+	assert.Equal(t, "2024-01-01", ann["date"])
+
+	d := manifests[0].Object["data"].(map[string]any)
+	assert.IsType(t, float64(0), d["replicas"])
+	assert.Equal(t, float64(3), d["replicas"])
+	assert.Equal(t, 1.5, d["ratio"])
+	assert.Equal(t, true, d["flag"])
+	assert.Nil(t, d["empty"])
+}
+
+func TestSplitYAML_AnchorsAndAliases(t *testing.T) {
+	data := []byte(`
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cm1
+data:
+  base: &base
+    x: 1
+  derived: *base
+`)
+	manifests, err := SplitYAML(data, "app", "file.yaml", false)
+	require.NoError(t, err)
+	require.Len(t, manifests, 1)
+
+	d := manifests[0].Object["data"].(map[string]any)
+	base := d["base"].(map[string]any)
+	derived := d["derived"].(map[string]any)
+	assert.Equal(t, float64(1), base["x"])
+	assert.Equal(t, float64(1), derived["x"])
+}
+
 func TestSplitYAML_MalformedDocumentReturnsError(t *testing.T) {
 	data := []byte(`apiVersion: v1
 kind: ConfigMap

@@ -10,7 +10,6 @@ import (
 	"log/slog"
 
 	"gopkg.in/yaml.v3"
-	sigsyaml "sigs.k8s.io/yaml"
 
 	"github.com/lukashankeln/glint/internal/manifest"
 )
@@ -35,19 +34,29 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 			continue // empty doc
 		}
 
-		// Re-encode the single document.
+		// Re-encode the single document (needed for Manifest.Raw).
 		docBytes, err := yaml.Marshal(&node)
 		if err != nil {
 			continue
 		}
 
-		var obj map[string]any
-		if err := sigsyaml.Unmarshal(docBytes, &obj); err != nil {
+		// Build the JSON-compatible object straight from the already-parsed
+		// Node tree instead of re-parsing docBytes through a second YAML/JSON
+		// library: nodeToValue walks the tree once in memory, avoiding the
+		// yaml.v2-decode + json.Marshal + json.Unmarshal chain that
+		// sigs.k8s.io/yaml performs internally on every document.
+		val, err := nodeToValue(&node)
+		if err != nil {
 			slog.Debug("skipping document", "app", appName, "err", err)
 			continue
 		}
-		if obj == nil {
-			continue // comment-only or blank
+		obj, ok := val.(map[string]any)
+		if !ok {
+			if val == nil {
+				continue // comment-only or blank (e.g. a bare "null" document)
+			}
+			slog.Debug("skipping document: not a mapping", "app", appName)
+			continue
 		}
 
 		apiVersion, _ := obj["apiVersion"].(string)
@@ -74,6 +83,79 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 	}
 
 	return manifests, nil
+}
+
+// nodeToValue converts a parsed yaml.Node tree into the same JSON-compatible
+// shape sigs.k8s.io/yaml produces (map[string]any / []any / string / float64 /
+// bool / nil), without re-parsing the document as text. Scalars are typed by
+// their resolved YAML tag, with anything other than !!null/!!bool/!!int/!!float
+// — including !!str and !!timestamp — kept as a plain string, matching JSON's
+// lack of a native date/time type and avoiding go-yaml's generic-decode
+// behavior of turning bare dates into time.Time.
+func nodeToValue(n *yaml.Node) (any, error) {
+	switch n.Kind {
+	case yaml.DocumentNode:
+		if len(n.Content) == 0 {
+			return nil, nil
+		}
+		return nodeToValue(n.Content[0])
+
+	case yaml.AliasNode:
+		return nodeToValue(n.Alias)
+
+	case yaml.MappingNode:
+		m := make(map[string]any, len(n.Content)/2)
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			k, err := nodeToValue(n.Content[i])
+			if err != nil {
+				return nil, err
+			}
+			ks, ok := k.(string)
+			if !ok {
+				ks = fmt.Sprint(k)
+			}
+			v, err := nodeToValue(n.Content[i+1])
+			if err != nil {
+				return nil, err
+			}
+			m[ks] = v
+		}
+		return m, nil
+
+	case yaml.SequenceNode:
+		s := make([]any, len(n.Content))
+		for i, c := range n.Content {
+			v, err := nodeToValue(c)
+			if err != nil {
+				return nil, err
+			}
+			s[i] = v
+		}
+		return s, nil
+
+	case yaml.ScalarNode:
+		switch n.Tag {
+		case "!!null":
+			return nil, nil
+		case "!!bool":
+			var b bool
+			if err := n.Decode(&b); err != nil {
+				return nil, err
+			}
+			return b, nil
+		case "!!int", "!!float":
+			var f float64
+			if err := n.Decode(&f); err != nil {
+				return nil, err
+			}
+			return f, nil
+		default:
+			return n.Value, nil
+		}
+
+	default:
+		return nil, fmt.Errorf("unsupported YAML node kind %v", n.Kind)
+	}
 }
 
 // extractMeta extracts name and namespace from a Kubernetes object map.
