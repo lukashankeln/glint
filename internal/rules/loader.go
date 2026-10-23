@@ -152,7 +152,8 @@ func loadRuleFile(path string) ([]RuleDef, error) {
 
 	// Try as rules-list first.
 	var doc ruleFileDoc
-	if err := yaml.Unmarshal(data, &doc); err == nil && len(doc.Rules) > 0 {
+	listErr := yaml.Unmarshal(data, &doc)
+	if listErr == nil && len(doc.Rules) > 0 {
 		defs := make([]RuleDef, 0, len(doc.Rules))
 		for _, ry := range doc.Rules {
 			if ry.ID == "" {
@@ -172,6 +173,9 @@ func loadRuleFile(path string) ([]RuleDef, error) {
 		return nil, fmt.Errorf("parsing rule file %q: %w", path, err)
 	}
 	if ry.ID == "" {
+		if listErr != nil {
+			return nil, fmt.Errorf("parsing rule file %q: %w", path, listErr)
+		}
 		return nil, nil
 	}
 	def := ruleYAMLToDef(ry, path)

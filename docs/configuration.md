@@ -154,7 +154,7 @@ rules:
     - "../shared-policies/security.yaml"
 ```
 
-Each file contains a `rules:` list of rule definitions (or a single rule) using the same schema as `custom` above.
+Each file contains a `rules:` list of rule definitions (or a single rule) using the same schema as `custom` above. A rule file that fails to parse is reported as an error rather than skipped.
 
 ### Exceptions
 
