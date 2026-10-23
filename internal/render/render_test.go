@@ -98,6 +98,38 @@ func TestKustomizeRenderer_Base(t *testing.T) {
 	assert.NotEmpty(t, manifests, "expected at least one manifest from the kustomize base")
 }
 
+func TestHelmRenderer_Timeout(t *testing.T) {
+	app := discovery.DiscoveredApp{
+		Name:        "frontend",
+		Framework:   discovery.FrameworkPlain,
+		Renderer:    discovery.RendererHelm,
+		RootPath:    testdataPath("argocd-helm-app/charts/frontend"),
+		ReleaseName: "frontend",
+		Namespace:   "default",
+	}
+	cfg := defaultCfg()
+	cfg.Render.Helm.Timeout = "1ns"
+	_, err := New(app, cfg).Render(context.Background(), app)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Contains(t, err.Error(), "timed out")
+}
+
+func TestKustomizeRenderer_Timeout(t *testing.T) {
+	app := discovery.DiscoveredApp{
+		Name:      "base",
+		Framework: discovery.FrameworkPlain,
+		Renderer:  discovery.RendererKustomize,
+		RootPath:  testdataPath("kustomize-overlay/base"),
+	}
+	cfg := defaultCfg()
+	cfg.Render.Kustomize.Timeout = "1ns"
+	_, err := New(app, cfg).Render(context.Background(), app)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Contains(t, err.Error(), "timed out")
+}
+
 func TestRawRenderer_RawYAML(t *testing.T) {
 	rawPath := testdataPath("raw-yaml")
 	app := discovery.DiscoveredApp{
