@@ -35,7 +35,9 @@ func (r *RawRenderer) Render(ctx context.Context, app discovery.DiscoveredApp) (
 		return nil, err
 	}
 
-	var manifests []manifest.Manifest
+	// One manifest per file is the common case; append still grows the slice
+	// for multi-doc files.
+	manifests := make([]manifest.Manifest, 0, len(files))
 	for _, path := range files {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
