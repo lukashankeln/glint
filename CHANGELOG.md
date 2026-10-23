@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.9](https://github.com/lukashankeln/glint/compare/v0.2.8...v0.2.9) (2026-10-23)
+
+
+### Features
+
+* **deps:** update kube-the-home/github-actions action to v1.5.0 ([d345a35](https://github.com/lukashankeln/glint/commit/d345a3513818e3122be8bc0316aed4f064f5c8fd))
+
+
+### Bug Fixes
+
+* **deps:** update alpine docker tag to v3.24.3 ([0bfbc67](https://github.com/lukashankeln/glint/commit/0bfbc673da17b7fcd8bca6d8eef62c8b997676ff))
+* **memory:** improve memory allocations for rendering ([b90753b](https://github.com/lukashankeln/glint/commit/b90753b59a367fb64301490cc733c97e2560a37e))
+* **render:** pre-allocate files as good as possible ([37c5cdf](https://github.com/lukashankeln/glint/commit/37c5cdffec6fe213d6013bca61c9377f97e98ab4))
+* **render:** return an error for malformed YAML instead of dropping documents ([1cf0a2d](https://github.com/lukashankeln/glint/commit/1cf0a2de5386b0cabb4e02341ae5409c7893f84f))
+* **rules:** return an error for malformed rule files instead of loading no rules ([8875d55](https://github.com/lukashankeln/glint/commit/8875d552881a8bc92fe24b068da8e53b757d1929))
+* **rules:** return an error for malformed rules-list files instead of dropping them ([#101](https://github.com/lukashankeln/glint/issues/101)) ([9b45733](https://github.com/lukashankeln/glint/commit/9b457330bf9b34f4a5960eca6e1101ca333de33f))
+* **rules:** validate and normalize CEL rule severities ([#104](https://github.com/lukashankeln/glint/issues/104)) ([4668ba1](https://github.com/lukashankeln/glint/commit/4668ba1014e4f23e08d093f28dd733578c231500))
+
 ## [0.2.8](https://github.com/lukashankeln/glint/compare/v0.2.7...v0.2.8) (2026-10-19)
 
 
