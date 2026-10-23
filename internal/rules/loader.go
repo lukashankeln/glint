@@ -173,6 +173,13 @@ func loadRuleFile(path string) ([]RuleDef, error) {
 		return defs, nil
 	}
 
+	// A document with a top-level rules key that failed to decode must be an
+	// error: the single-rule fallback ignores the key and would silently drop
+	// every rule in the file.
+	if listErr != nil && hasRulesKey(data) {
+		return nil, fmt.Errorf("parsing rule file %q: %w", path, listErr)
+	}
+
 	// Fall back to single rule.
 	var ry ruleYAML
 	if err := yaml.Unmarshal(data, &ry); err != nil {
@@ -191,6 +198,17 @@ func loadRuleFile(path string) ([]RuleDef, error) {
 	def.Enabled = true
 	def.Expression = preprocessExpression(def.Expression)
 	return []RuleDef{def}, nil
+}
+
+// hasRulesKey reports whether data is a YAML mapping with a top-level rules key.
+func hasRulesKey(data []byte) bool {
+	var probe struct {
+		Rules yaml.Node `yaml:"rules"`
+	}
+	if err := yaml.Unmarshal(data, &probe); err != nil {
+		return false
+	}
+	return probe.Rules.Kind != 0
 }
 
 func ruleYAMLToDef(ry ruleYAML, source string) RuleDef {
