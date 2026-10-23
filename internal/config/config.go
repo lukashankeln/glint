@@ -230,12 +230,34 @@ func defaultConfig() *Config {
 	}
 }
 
+// ValidSeverity reports whether s is a known severity (case-insensitive).
+func ValidSeverity(s string) bool {
+	switch strings.ToLower(s) {
+	case "error", "warning", "info":
+		return true
+	}
+	return false
+}
+
 // Validate checks the config for semantic errors.
 func (c *Config) Validate() error {
 	for _, s := range c.FailOn {
-		s = strings.ToLower(s)
-		if s != "error" && s != "warning" && s != "info" {
-			return fmt.Errorf("fail_on: unknown severity %q (must be error, warning, or info)", s)
+		if !ValidSeverity(s) {
+			return fmt.Errorf("fail_on: unknown severity %q (must be error, warning, or info)", strings.ToLower(s))
+		}
+	}
+
+	builtIns := []struct {
+		name string
+		sev  string
+	}{
+		{"no_latest_tag", c.Rules.BuiltIn.NoLatestTag.Severity},
+		{"resource_requests", c.Rules.BuiltIn.ResourceRequests.Severity},
+		{"deprecated_apis", c.Rules.BuiltIn.DeprecatedAPIs.Severity},
+	}
+	for _, b := range builtIns {
+		if b.sev != "" && !ValidSeverity(b.sev) {
+			return fmt.Errorf("rules.built_in.%s: unknown severity %q (must be error, warning, or info)", b.name, b.sev)
 		}
 	}
 
@@ -257,6 +279,9 @@ func (c *Config) Validate() error {
 	}
 
 	for i, r := range c.Rules.Custom {
+		if r.Severity != "" && !ValidSeverity(r.Severity) {
+			return fmt.Errorf("rules.custom[%d] (%s): unknown severity %q (must be error, warning, or info)", i, r.ID, r.Severity)
+		}
 		if r.OnEvalError != "" && r.OnEvalError != OnEvalErrorWarning && r.OnEvalError != OnEvalErrorError {
 			return fmt.Errorf("rules.custom[%d] (%s): on_eval_error must be %q or %q, got %q", i, r.ID, OnEvalErrorWarning, OnEvalErrorError, r.OnEvalError)
 		}
@@ -274,8 +299,7 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("plugins[%s]: input must be 'stdin' or 'file', got %q", p.Name, p.Input)
 		}
 		if p.Severity != "" {
-			s := strings.ToLower(p.Severity)
-			if s != "error" && s != "warning" && s != "info" {
+			if !ValidSeverity(p.Severity) {
 				return fmt.Errorf("plugins[%s]: unknown severity %q", p.Name, p.Severity)
 			}
 		}
