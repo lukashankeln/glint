@@ -65,3 +65,31 @@ func TestValidSeverity(t *testing.T) {
 	assert.False(t, ValidSeverity("critical"))
 	assert.False(t, ValidSeverity(""))
 }
+
+func TestValidate_RenderTimeouts(t *testing.T) {
+	set := map[string]func(*Config, string){
+		"render.helm.timeout":      func(c *Config, v string) { c.Render.Helm.Timeout = v },
+		"render.kustomize.timeout": func(c *Config, v string) { c.Render.Kustomize.Timeout = v },
+	}
+	for field, fn := range set {
+		for _, v := range []string{"30s", ""} {
+			cfg := validConfig(t)
+			fn(cfg, v)
+			assert.NoError(t, cfg.Validate(), "%s %q", field, v)
+		}
+		for _, v := range []string{"2 minutes", "0s", "-1s"} {
+			cfg := validConfig(t)
+			fn(cfg, v)
+			err := cfg.Validate()
+			require.Error(t, err, "%s %q", field, v)
+			assert.Contains(t, err.Error(), field)
+		}
+	}
+}
+
+func TestLoad_DefaultRenderTimeouts(t *testing.T) {
+	cfg := validConfig(t)
+	assert.Equal(t, "120s", cfg.Render.Helm.Timeout)
+	assert.Equal(t, "60s", cfg.Render.Kustomize.Timeout)
+	assert.NoError(t, cfg.Validate())
+}
