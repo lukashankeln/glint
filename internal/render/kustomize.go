@@ -16,24 +16,41 @@ import (
 // KustomizeRenderer renders Kustomize overlays using the krusty SDK.
 type KustomizeRenderer struct {
 	cfg *config.Config
+	// sdk is the in-process render; a field so tests can substitute a blocking one.
+	sdk func(context.Context, discovery.DiscoveredApp) ([]manifest.Manifest, error)
 }
 
 // newKustomizeRenderer creates a KustomizeRenderer.
 func newKustomizeRenderer(cfg *config.Config) *KustomizeRenderer {
-	return &KustomizeRenderer{cfg: cfg}
+	r := &KustomizeRenderer{cfg: cfg}
+	r.sdk = r.renderSDK
+	return r
 }
 
 // Render renders the given Kustomize app and returns manifests.
 func (r *KustomizeRenderer) Render(ctx context.Context, app discovery.DiscoveredApp) ([]manifest.Manifest, error) {
-	if ctx.Err() != nil {
-		return nil, ctx.Err()
+	tctx, cancel, d, err := withRenderTimeout(ctx, r.cfg.Render.Kustomize.Timeout)
+	if err != nil {
+		return nil, fmt.Errorf("render.kustomize.timeout: %w", err)
+	}
+	defer cancel()
+
+	if tctx.Err() != nil {
+		return nil, wrapRenderTimeout(ctx, tctx, "kustomize", app.Name, d, tctx.Err())
 	}
 
+	var manifests []manifest.Manifest
 	if r.cfg.Render.SubprocessFallback {
-		return renderKustomizeSubprocess(ctx, app)
+		manifests, err = renderKustomizeSubprocess(tctx, app)
+	} else {
+		manifests, err = runWithContext(tctx, func() ([]manifest.Manifest, error) {
+			return r.sdk(tctx, app)
+		})
 	}
-
-	return r.renderSDK(ctx, app)
+	if err != nil {
+		return nil, wrapRenderTimeout(ctx, tctx, "kustomize", app.Name, d, err)
+	}
+	return manifests, nil
 }
 
 func (r *KustomizeRenderer) renderSDK(_ context.Context, app discovery.DiscoveredApp) ([]manifest.Manifest, error) {
