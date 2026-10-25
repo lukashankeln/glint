@@ -177,7 +177,7 @@ func writeSARIF(w io.Writer, violations []rules.Violation) error {
 		ShortDescription map[string]string `json:"shortDescription"`
 		DefaultConfig    map[string]string `json:"defaultConfiguration"`
 	}
-	var sarifRules []sarifRule
+	sarifRules := []sarifRule{}
 
 	type sarifLocation struct {
 		PhysicalLocation map[string]any `json:"physicalLocation"`
@@ -189,7 +189,7 @@ func writeSARIF(w io.Writer, violations []rules.Violation) error {
 		Locations []sarifLocation `json:"locations,omitempty"`
 	}
 
-	var results []sarifResult
+	results := make([]sarifResult, 0, len(violations))
 
 	for _, v := range violations {
 		if !rulesSeen[v.RuleID] {
