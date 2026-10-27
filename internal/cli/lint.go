@@ -83,13 +83,15 @@ func newLintCmd() *cobra.Command {
 			// Render all apps in parallel and collect manifests.
 			var allManifests []manifest.Manifest
 			var successfulRenders []renderResult
+			var renderErrors []rules.Violation
 			rendered := 0
 			for _, r := range renderAppsParallel(cmd.Context(), apps, cfg) {
 				if cmd.Context().Err() != nil {
 					return cmd.Context().Err()
 				}
 				if r.err != nil {
-					slog.Warn("render failed, skipping", "app", r.app.Name, "err", r.err)
+					slog.Warn("render failed", "app", r.app.Name, "err", r.err)
+					renderErrors = append(renderErrors, renderErrorViolation(r.app, r.err))
 					continue
 				}
 				rendered++
@@ -126,6 +128,10 @@ func newLintCmd() *cobra.Command {
 					Source:   "discovery",
 				})
 			}
+
+			// Apps that failed to render cannot be validated at all, so they
+			// are reported as errors.
+			violations = append(violations, renderErrors...)
 
 			// Apply --only-rules / --skip-rules filters.
 			violations = filterViolations(violations, onlyRules, skipRules)
@@ -213,6 +219,22 @@ func newLintCmd() *cobra.Command {
 	cmd.Flags().StringVar(&outputSARIF, "output-sarif", "", "write SARIF output to file alongside the primary format")
 	cmd.Flags().StringVar(&outputJUnit, "output-junit", "", "write JUnit XML to file alongside the primary format")
 	return cmd
+}
+
+// renderErrorViolation reports an app that failed to render: none of its
+// manifests can be validated, so it is treated as an error.
+func renderErrorViolation(app discovery.DiscoveredApp, err error) rules.Violation {
+	path := app.RootPath
+	if app.Source != nil && app.Source.Path != "" {
+		path = app.Source.Path
+	}
+	return rules.Violation{
+		RuleID:   "glint/render-error",
+		Severity: rules.SeverityError,
+		Message:  fmt.Sprintf("app %q could not be rendered and cannot be validated: %v", app.Name, err),
+		FilePath: path,
+		Source:   "render",
+	}
 }
 
 func filterViolations(violations []rules.Violation, onlyRules, skipRules string) []rules.Violation {

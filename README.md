@@ -304,6 +304,8 @@ glint init [path]
 
 **Exit codes:** `0` = clean, `1` = violations found, `2` = pipeline error
 
+Apps that fail to render and GitOps files that fail to parse are reported as `glint/render-error` / `glint/parse-error` error violations (exit 1); skip them with `--skip-rules` if needed.
+
 ---
 
 ## Output formats
