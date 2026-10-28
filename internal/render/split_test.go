@@ -500,7 +500,7 @@ func TestSplitYAML_SelfReferentialAnchorSkipsDocument(t *testing.T) {
 
 // billionLaughsData builds a ConfigMap whose data nests levels a..e, each a
 // 10-element list of aliases to the previous level: about 10^5 leaves, far past
-// the ~12k decodes at which the guard trips, yet small enough that a guard
+// the ~5.4k decodes at which the guard trips, yet small enough that a guard
 // regression fails an assertion instead of exhausting memory.
 func billionLaughsData() string {
 	var b strings.Builder
@@ -564,6 +564,18 @@ func TestNodeToValue_AnchorInsideMergeSequence(t *testing.T) {
 			"a":     float64(1),
 			"other": map[string]any{"a": float64(1)},
 		},
+	}, v)
+}
+
+func TestNodeToValue_AnchorNestedInAnchoredNode(t *testing.T) {
+	var node yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte("a: &a {b: &b 1}\nc: *b\n"), &node))
+
+	v, err := nodeToValue(&node)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{
+		"a": map[string]any{"b": float64(1)},
+		"c": float64(1),
 	}, v)
 }
 
