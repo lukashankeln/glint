@@ -89,9 +89,10 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 // shape sigs.k8s.io/yaml produces (map[string]any / []any / string / float64 /
 // bool / nil), without re-parsing the document as text. Scalars are typed by
 // their resolved YAML tag, with anything other than !!null/!!bool/!!int/!!float
-// — including !!str and !!timestamp — kept as a plain string, matching JSON's
-// lack of a native date/time type and avoiding go-yaml's generic-decode
-// behavior of turning bare dates into time.Time.
+// — including !!str and !!timestamp — kept as a plain string (except plain
+// YAML 1.1 bool literals, below), matching JSON's lack of a native date/time
+// type and avoiding go-yaml's generic-decode behavior of turning bare dates
+// into time.Time.
 //
 // Plain (unquoted, untagged) YAML 1.1 bool literals that yaml.v3 resolves as
 // strings — y/yes/on/n/no/off in the case forms go-yaml v2 accepts — become
