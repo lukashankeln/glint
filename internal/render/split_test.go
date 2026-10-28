@@ -291,3 +291,33 @@ metadata:
 		})
 	}
 }
+
+func TestSplitYAML_RepeatedAndNestedAliases(t *testing.T) {
+	// The cycle guard must release an anchor once its expansion finishes, so
+	// reusing an anchor in sibling and nested positions is not mistaken for a
+	// self-reference.
+	data := []byte(`
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cm1
+data:
+  base: &x
+    v: 1
+  a: *x
+  b: *x
+  outer: &y
+    inner: *x
+  again: *y
+`)
+	manifests, err := SplitYAML(data, "app", "file.yaml", false)
+	require.NoError(t, err)
+	require.Len(t, manifests, 1)
+
+	d := manifests[0].Object["data"].(map[string]any)
+	want := map[string]any{"v": float64(1)}
+	assert.Equal(t, want, d["a"])
+	assert.Equal(t, want, d["b"])
+	assert.Equal(t, map[string]any{"inner": want}, d["outer"])
+	assert.Equal(t, map[string]any{"inner": want}, d["again"])
+}
