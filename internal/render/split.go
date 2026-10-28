@@ -99,6 +99,10 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 // mapping, or a sequence of those (applied in reverse so earlier sources win);
 // anything else is an error. Merging is shallow. Self-referential anchors
 // return an error instead of recursing forever.
+//
+// Detection works on the yaml.v3 Node, which drops a bare non-specific "!" tag,
+// so `! "<<"` (a merge key to go-yaml v2 / Kubernetes) is seen here as the
+// literal key "<<". This matches the old v3 re-encode pipeline, not raw sigs.k8s.io/yaml.
 func nodeToValue(n *yaml.Node) (any, error) {
 	c := converter{expanding: map[*yaml.Node]bool{}}
 	return c.convert(n)
@@ -170,7 +174,7 @@ func (c *converter) mergeSource(m map[string]any, src *yaml.Node) error {
 	return nil
 }
 
-var errMergeValue = fmt.Errorf("map merge requires map or sequence of maps as the value")
+var errMergeValue = errors.New("map merge requires map or sequence of maps as the value")
 
 func (c *converter) merge(m map[string]any, v *yaml.Node) error {
 	if v.Kind == yaml.SequenceNode {
