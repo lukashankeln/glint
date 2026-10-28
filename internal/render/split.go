@@ -126,13 +126,18 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 // makes a "billion laughs" document fail with errExcessiveAliasing instead of
 // exhausting CPU and memory; its counters are per call, i.e. per document. A
 // byte budget catches what the ratio misses, a large scalar aliased many times:
-// every scalar converted through an alias is charged len(Value)+1 bytes and
-// every aliased mapping or sequence a constant 2, plus 2 bytes per level of
+// every scalar converted through an alias is charged len(Value) plus
+// aliasedScalarCost, every aliased mapping aliasedMapCost plus aliasedEntryCost
+// per pair, every aliased sequence aliasedSeqCost plus aliasedElemCost per
+// element, and every entry a merge copies from an alias aliasedMergeEntryCost.
+// These are shaped like the heap the conversion allocates, so the budget bounds
+// memory and not just output size. On top of that comes 2 bytes per level of
 // nesting (aliasedIndentCost, the indentation the output writes on each line;
 // an aliased target's depth adds to the alias site's), and exceeding the budget
 // fails with errExcessiveAliasExpansion. Here the budget is the floor
 // (aliasedBytesFloor); SplitYAML shares one budget, aliasByteBudget(len(data)),
-// across the documents of a stream, so the result depends on order: a later
+// that scales with the input up to aliasedBytesCeiling across the documents of
+// a stream, so the result depends on order: a later
 // document can be the one that is skipped. A rejected document's charges are
 // refunded, so only accepted documents consume the shared budget.
 //
@@ -198,15 +203,44 @@ const (
 	aliasedBytesFloor = 1 << 20
 	// aliasedBytesPerInputByte scales the budget with the size of the input.
 	aliasedBytesPerInputByte = 10
-	// aliasedNodeCost is charged for each aliased mapping or sequence node.
-	aliasedNodeCost = 2
+	// aliasedBytesCeiling caps the scaled budget, so a huge input cannot buy an
+	// unbounded amount of alias expansion.
+	aliasedBytesCeiling = 64 << 20
+
+	// The costs below approximate the heap nodeToValue allocates for aliased
+	// content (measured on Go 1.27 as marginal runtime.MemStats.TotalAlloc per
+	// alias, see TestAliasCharges_CoverHeapAllocation) and are rounded up, so
+	// the budget bounds heap rather than serialized bytes.
+
+	// aliasedMapCost is charged for each aliased mapping: the map header and
+	// the first swiss-map group (a one-pair map allocates ~370 bytes in all,
+	// of which ~100 are charged as its scalars).
+	aliasedMapCost = 256
+	// aliasedEntryCost is charged per key/value pair of an aliased mapping,
+	// for its slot in the map (tables of presized maps run ~120 bytes per
+	// entry including the boxed key and value, which are charged as scalars).
+	aliasedEntryCost = 32
+	// aliasedSeqCost is charged for each aliased sequence: slice header plus
+	// the slot in its parent.
+	aliasedSeqCost = 48
+	// aliasedElemCost is charged per element of an aliased sequence, for its
+	// 16-byte interface slot.
+	aliasedElemCost = 16
+	// aliasedScalarCost is charged per aliased scalar on top of len(Value): the
+	// boxed value and its interface slot (~35 bytes), rounded up.
+	aliasedScalarCost = 48
+	// aliasedMergeEntryCost is charged per entry a merge copies out of an
+	// aliased mapping (or into aliased content): the outer mapping is not
+	// charged itself and grows past its presize, which costs up to ~180 bytes
+	// per entry, garbage from the doubling tables included.
+	aliasedMergeEntryCost = 192
 	// aliasedIndentCost is charged per level of nesting of an aliased node.
 	aliasedIndentCost = 2
 )
 
 // aliasByteBudget returns the alias byte budget for an input of inputLen bytes.
 func aliasByteBudget(inputLen int) int {
-	return max(aliasedBytesFloor, aliasedBytesPerInputByte*inputLen)
+	return min(max(aliasedBytesFloor, aliasedBytesPerInputByte*inputLen), aliasedBytesCeiling)
 }
 
 // charge deducts n bytes from the alias budget, failing once it is overdrawn.
@@ -312,6 +346,14 @@ func (c *converter) mergeSource(m map[string]any, src *yaml.Node) error {
 	if !ok {
 		return errMergeValue
 	}
+	// The copy grows m past its presize, and m is usually not an aliased node
+	// itself, so charge for that growth whenever the copied entries came from
+	// or into aliased content.
+	if src.Kind == yaml.AliasNode || c.aliasDepth > 0 {
+		if err := c.charge(aliasedMergeEntryCost * len(sm)); err != nil {
+			return err
+		}
+	}
 	for k, x := range sm {
 		m[k] = x
 	}
@@ -357,7 +399,7 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 
 	case yaml.MappingNode:
 		if c.aliasDepth > 0 {
-			if err := c.charge(aliasedNodeCost + aliasedIndentCost*c.depth); err != nil {
+			if err := c.charge(aliasedMapCost + aliasedEntryCost*(len(n.Content)/2) + aliasedIndentCost*c.depth); err != nil {
 				return nil, err
 			}
 		}
@@ -393,7 +435,7 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 
 	case yaml.SequenceNode:
 		if c.aliasDepth > 0 {
-			if err := c.charge(aliasedNodeCost + aliasedIndentCost*c.depth); err != nil {
+			if err := c.charge(aliasedSeqCost + aliasedElemCost*len(n.Content) + aliasedIndentCost*c.depth); err != nil {
 				return nil, err
 			}
 		}
@@ -411,7 +453,7 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 
 	case yaml.ScalarNode:
 		if c.aliasDepth > 0 {
-			if err := c.charge(len(n.Value) + 1 + aliasedIndentCost*c.depth); err != nil {
+			if err := c.charge(len(n.Value) + aliasedScalarCost + aliasedIndentCost*c.depth); err != nil {
 				return nil, err
 			}
 		}

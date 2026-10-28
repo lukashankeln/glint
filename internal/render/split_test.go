@@ -2,6 +2,7 @@ package render
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -735,10 +736,10 @@ func TestSplitYAML_AliasAmplificationSkipsDocument(t *testing.T) {
 }
 
 func TestSplitYAML_AliasBudgetSharedAcrossStream(t *testing.T) {
-	// Each document alone expands 40 * (16 KiB + 1) bytes, within the budget;
+	// Each document alone expands 40 * (16 KiB + aliasedScalarCost) bytes, within the budget;
 	// both together are not.
 	const strLen, n = 16 << 10, 40
-	cost := n * (strLen + 1)
+	cost := n * (strLen + aliasedScalarCost)
 	data := []byte(aliasedScalarDoc("first", strLen, n) + "---\n" + aliasedScalarDoc("second", strLen, n))
 	budget := aliasByteBudget(len(data))
 	require.Less(t, cost, budget, "fixture: one document must fit")
@@ -752,16 +753,17 @@ func TestSplitYAML_AliasBudgetSharedAcrossStream(t *testing.T) {
 
 func TestNodeToValueBudget_Edge(t *testing.T) {
 	// The anchored scalar is free; the alias, one level deep, charges
-	// len("abc")+1 + 2*1 = 6 bytes.
+	// len("abc") + aliasedScalarCost + aliasedIndentCost*1 bytes.
 	const doc = "[&s abc, *s]"
+	const cost = len("abc") + aliasedScalarCost + aliasedIndentCost
 
-	budget := 6
+	budget := cost
 	v, err := nodeToValueBudget(parseNode(t, doc), &budget)
 	require.NoError(t, err)
 	assert.Equal(t, []any{"abc", "abc"}, v)
 	assert.Equal(t, 0, budget)
 
-	budget = 5
+	budget = cost - 1
 	_, err = nodeToValueBudget(parseNode(t, doc), &budget)
 	require.ErrorIs(t, err, errExcessiveAliasExpansion)
 }
@@ -781,17 +783,18 @@ func TestNodeToValue_DeepAliasedMappingRejected(t *testing.T) {
 
 func TestNodeToValueBudget_NodeChargesOnly(t *testing.T) {
 	// Aliased empty mappings and sequences carry no scalars: each alias, one
-	// level deep, charges aliasedNodeCost + aliasedIndentCost = 4 bytes.
+	// level deep, charges its base cost plus aliasedIndentCost.
 	const n = 30
-	for _, anchored := range []string{"{}", "[]"} {
+	for anchored, base := range map[string]int{"{}": aliasedMapCost, "[]": aliasedSeqCost} {
 		doc := "[&e " + anchored + strings.Repeat(", *e", n) + "]"
+		total := n * (base + aliasedIndentCost)
 
-		budget := 4 * n
+		budget := total
 		_, err := nodeToValueBudget(parseNode(t, doc), &budget)
 		require.NoError(t, err, anchored)
 		assert.Equal(t, 0, budget, anchored)
 
-		budget = 4*n - 1
+		budget = total - 1
 		_, err = nodeToValueBudget(parseNode(t, doc), &budget)
 		require.ErrorIs(t, err, errExcessiveAliasExpansion, anchored)
 	}
@@ -804,7 +807,7 @@ func TestSplitYAML_AliasBudgetScalesWithInput(t *testing.T) {
 	const strLen, n = 16 << 10, 80
 	doc := aliasedScalarDoc("scaled", strLen, n) + "  pad: " + strings.Repeat("p", 150<<10) + "\n"
 	data := []byte(doc)
-	cost := n * (strLen + 1)
+	cost := n * (strLen + aliasedScalarCost)
 	require.Greater(t, cost, aliasByteBudget(0), "fixture: must exceed the floor")
 	require.Less(t, cost+n*3*aliasedIndentCost, aliasByteBudget(len(data)), "fixture: must fit the scaled budget")
 
@@ -821,11 +824,101 @@ func TestSplitYAML_RejectedDocumentRefundsBudget(t *testing.T) {
 	data := []byte(aliasedScalarDoc("bomb", 16<<10, 2000) + "---\n" +
 		aliasedScalarDoc("modest", strLen, n) + "---\n" +
 		"apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: good\n")
-	require.Less(t, n*(strLen+1+6), aliasByteBudget(len(data)), "fixture: modest must fit alone")
+	require.Less(t, n*(strLen+aliasedScalarCost+6), aliasByteBudget(len(data)), "fixture: modest must fit alone")
 
 	manifests, err := SplitYAML(data, "app", "file.yaml", false)
 	require.NoError(t, err)
 	require.Len(t, manifests, 2)
 	assert.Equal(t, "modest", manifests[0].Name)
 	assert.Equal(t, "good", manifests[1].Name)
+}
+
+func TestSplitYAML_ManySmallAliasedMapsRejected(t *testing.T) {
+	// Each document aliases a one-pair map 4000 times: ~12 KB of input that
+	// retains ~1.5 MB of heap. The heap-shaped charges must not accept the
+	// whole stream.
+	var doc strings.Builder
+	doc.WriteString("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\ndata:\n  m: &a {k0: v}\n  l: [")
+	doc.WriteString(strings.TrimSuffix(strings.Repeat("*a, ", 4000), ", "))
+	doc.WriteString("]\n")
+	data := []byte(strings.Repeat("---\n"+doc.String(), 10))
+
+	manifests, err := SplitYAML(data, "app", "file.yaml", false)
+	require.NoError(t, err)
+	assert.Less(t, len(manifests), 10)
+}
+
+func TestAliasByteBudget_FloorAndCeiling(t *testing.T) {
+	assert.Equal(t, aliasedBytesFloor, aliasByteBudget(0))
+	assert.Equal(t, aliasedBytesFloor, aliasByteBudget(1))
+	assert.Equal(t, 10*(1<<20), aliasByteBudget(1<<20))
+	assert.Equal(t, aliasedBytesCeiling, aliasByteBudget(aliasedBytesCeiling))
+	assert.Equal(t, aliasedBytesCeiling, aliasByteBudget(1<<40))
+}
+
+// TestAliasCharges_CoverHeapAllocation checks that what nodeToValue charges for
+// aliased content is at least what the conversion allocates (runtime.MemStats
+// TotalAlloc, which counts garbage as well as retained bytes). Each case is a
+// list holding the anchor once and then n uses of it; the cost of one use is
+// the difference between 2n and n uses, which cancels fixed costs and the
+// unaliased scaffolding. The leading plain scalars keep the alias ratio under
+// yaml.v3's excessive-aliasing limit. The charge must not fall below the
+// allocation; the constants carry a margin on top of that.
+func TestAliasCharges_CoverHeapAllocation(t *testing.T) {
+	const n = 100
+	pairs := func(k int) string {
+		p := make([]string, k)
+		for i := range p {
+			p[i] = fmt.Sprintf("k%d: v", i)
+		}
+		return strings.Join(p, ", ")
+	}
+	type tc struct{ name, anchor, use string }
+	var cases []tc
+	for _, k := range []int{1, 8, 9, 57} {
+		cases = append(cases,
+			tc{fmt.Sprintf("map-%d", k), "&a {" + pairs(k) + "}", "*a"},
+			tc{fmt.Sprintf("seq-%d", k), "&a [" + strings.Repeat("v, ", k) + "]", "*a"},
+		)
+	}
+	// The unaliased wrapper map {<<: ...} is input scaffolding that no alias
+	// charge can cover, so a merge of a single entry (no growth of the wrapper
+	// beyond its presize) is left out.
+	for _, k := range []int{8, 9, 57} {
+		cases = append(cases,
+			tc{fmt.Sprintf("merge-%d", k), "&a {" + pairs(k) + "}", "{<<: *a}"},
+			tc{fmt.Sprintf("merge-seq-%d", k), "&a {" + pairs(k) + "}", "{<<: [*a, *a]}"},
+		)
+	}
+	cases = append(cases,
+		tc{"scalar-empty", "&a \"\"", "*a"},
+		tc{"scalar-5", "&a hello", "*a"},
+		tc{"scalar-100", "&a " + strings.Repeat("x", 100), "*a"},
+	)
+
+	measure := func(node *yaml.Node) (alloc uint64, charged int) {
+		budget := 1 << 40
+		var before, after runtime.MemStats
+		runtime.GC()
+		runtime.ReadMemStats(&before)
+		v, err := nodeToValueBudget(node, &budget)
+		runtime.ReadMemStats(&after)
+		require.NoError(t, err)
+		runtime.KeepAlive(v)
+		return after.TotalAlloc - before.TotalAlloc, 1<<40 - budget
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			doc := func(uses int) *yaml.Node {
+				return parseNode(t, "["+strings.Repeat("0, ", 3000)+c.anchor+strings.Repeat(", "+c.use, uses)+"]")
+			}
+			small, large := doc(n), doc(2*n)
+			allocS, chargedS := measure(small)
+			allocL, chargedL := measure(large)
+			alloc := (allocL - allocS) / n
+			charged := (chargedL - chargedS) / n
+			t.Logf("per alias: allocated %d, charged %d", alloc, charged)
+			assert.LessOrEqual(t, alloc, uint64(charged))
+		})
+	}
 }
