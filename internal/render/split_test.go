@@ -1,6 +1,7 @@
 package render
 
 import (
+	"encoding/json"
 	"fmt"
 	"runtime"
 	"strings"
@@ -431,6 +432,14 @@ func TestNodeToValue_Errors(t *testing.T) {
 		{"mapping key", "? {a: 1}\n: v\n", "invalid map key", false},
 		{"sequence key", "? [1, 2]\n: v\n", "invalid map key", false},
 		{"alias to mapping as key", "a: &a {p: 1}\n? *a\n: v\n", "invalid map key", false},
+		{"non-finite float value", "v: .inf\n", "", false},
+		{"invalid binary", "v: !!binary \"###\"\n", "", false},
+		{"non-null !!null", "v: !!null yes\n", "", false},
+	}
+	sentinels := map[string]error{
+		"non-finite float value": errNonFiniteFloat,
+		"invalid binary":         errInvalidBinary,
+		"non-null !!null":        errInvalidNull,
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -440,6 +449,8 @@ func TestNodeToValue_Errors(t *testing.T) {
 			require.Error(t, err)
 			if tc.isMerge {
 				require.ErrorIs(t, err, errMergeValue)
+			} else if sentinel, ok := sentinels[tc.name]; ok {
+				require.ErrorIs(t, err, sentinel)
 			} else {
 				require.ErrorContains(t, err, tc.wantErr)
 			}
@@ -634,13 +645,91 @@ func TestSplitYAML_ComplexKeySkipsDocument(t *testing.T) {
 // nodeToValue: yaml.v3 re-encode of the parsed node, then sigs.k8s.io/yaml.
 func oldPipelineObject(t *testing.T, data []byte) map[string]any {
 	t.Helper()
-	var node yaml.Node
-	require.NoError(t, yaml.Unmarshal(data, &node))
-	docBytes, err := yaml.Marshal(&node)
+	obj, err := oldPipelineObjectErr(data)
 	require.NoError(t, err)
-	var obj map[string]any
-	require.NoError(t, sigsyaml.Unmarshal(docBytes, &obj))
 	return obj
+}
+
+// oldPipelineObjectErr is oldPipelineObject returning the error, for inputs
+// the old pipeline rejects.
+func oldPipelineObjectErr(data []byte) (map[string]any, error) {
+	var node yaml.Node
+	if err := yaml.Unmarshal(data, &node); err != nil {
+		return nil, err
+	}
+	docBytes, err := yaml.Marshal(&node)
+	if err != nil {
+		return nil, err
+	}
+	var obj map[string]any
+	if err := sigsyaml.Unmarshal(docBytes, &obj); err != nil {
+		return nil, err
+	}
+	return obj, nil
+}
+
+// TestSplitYAML_NonJSONScalarsMatchOldPipeline pins .inf/.nan, !!binary and
+// !!null handling to the old pipeline: where it rejected the document the
+// document is skipped, otherwise the objects are equal and JSON-encodable.
+func TestSplitYAML_NonJSONScalarsMatchOldPipeline(t *testing.T) {
+	bodies := []string{
+		// Non-finite floats: rejected as values, accepted as keys.
+		"  v: .inf\n", "  v: -.inf\n", "  v: .NaN\n", "  v: .nan\n",
+		"  v: !!float .inf\n", "  v: [.inf, 1]\n", "  v: {a: .inf}\n",
+		"  .inf: 1\n", "  -.inf: 1\n", "  .nan: 1\n",
+		"  a: &a .inf\n  b: [*a]\n",
+		"  &a .inf : 1\n  b: {*a : 2}\n",
+		"  m: &m {x: .inf}\n  q: {<<: *m}\n",
+		// !!binary values and keys.
+		"  v: !!binary eWVz\n", "  v: !!binary \"eWVz\"\n", "  v: !<tag:yaml.org,2002:binary> eWVz\n",
+		"  v: !!binary |\n    eWVz\n    eWVz\n",
+		"  v: !!binary >\n    eWVz\n    eWVz\n",
+		"  v: !!binary \"eW Vz\"\n",
+		"  v: !!binary \"###\"\n", "  v: !!binary \"eWV\"\n", "  v: !!binary 123\n",
+		"  v: !!binary /w==\n", "  v: !!binary //8=\n",
+		"  !!binary eWVz: 1\n",
+		"  a: &a !!binary eWVz\n  b: [*a, *a]\n",
+		// !!null: only the YAML 1.1 null spellings.
+		"  v: !!null yes\n", "  v: !!null Nul\n", "  v: !!null nULL\n",
+		"  v: !!null\n", "  v: ~\n", "  v: null\n", "  v: NULL\n", "  v: \"\"\n",
+		"  v: 'null'\n", "  v: ''\n", "  v: !!null ~\n", "  v: !!null 'null'\n", "  v: !!null \"\"\n",
+		// Regression rows that already matched.
+		"  v: !!float 1e400\n", "  !!float 1e400: 1\n", "  v: !!int .inf\n",
+		"  v: " + strings.Repeat("9", 400) + "\n",
+		"  v: !!str .inf\n", "  v: !!int 0x10\n", "  v: !!timestamp 2001-12-14\n",
+	}
+	good := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: good\n"
+	for _, body := range bodies {
+		t.Run(body, func(t *testing.T) {
+			doc := mergeDocHeader + "data:\n" + body
+			want, oldErr := oldPipelineObjectErr([]byte(doc))
+			if oldErr != nil {
+				manifests, err := SplitYAML([]byte(good+"---\n"+doc), "app", "file.yaml", false)
+				require.NoError(t, err)
+				require.Len(t, manifests, 1)
+				assert.Equal(t, "good", manifests[0].Name)
+				return
+			}
+			manifests, err := SplitYAML([]byte(doc), "app", "file.yaml", false)
+			require.NoError(t, err)
+			require.Len(t, manifests, 1)
+			assert.Equal(t, want, manifests[0].Object)
+			_, err = json.Marshal(manifests[0].Object)
+			assert.NoError(t, err)
+		})
+	}
+}
+
+// TestSplitYAML_BinaryKeyCollisionKeepsLast pins a known difference from the
+// old pipeline: two !!binary keys that decode to the same string after
+// invalid bytes become U+FFFD keep the later one in document order (the old
+// pipeline kept the one whose raw key bytes sorted last).
+func TestSplitYAML_BinaryKeyCollisionKeepsLast(t *testing.T) {
+	doc := mergeDocHeader + "data:\n  !!binary //8=: 1\n  !!binary /v8=: 2\n"
+	manifests, err := SplitYAML([]byte(doc), "app", "file.yaml", false)
+	require.NoError(t, err)
+	require.Len(t, manifests, 1)
+	assert.Equal(t, map[string]any{"\uFFFD\uFFFD": float64(2)}, manifests[0].Object["data"])
 }
 
 func TestSplitYAML_YAML11BoolsMatchOldPipeline(t *testing.T) {
@@ -921,6 +1010,9 @@ func TestAliasCharges_CoverHeapAllocation(t *testing.T) {
 		tc{"map-int-values-8", typed(8, false), "*a"},
 		tc{"map-int-keys-1", typed(1, true), "*a"},
 		tc{"map-int-keys-8", typed(8, true), "*a"},
+		tc{"binary-long", "&a !!binary " + strings.Repeat("eWVz", 250), "*a"},
+		tc{"binary-invalid-utf8", "&a !!binary " + strings.Repeat("////", 250), "*a"},
+		tc{"binary-short", "&a !!binary eWVz", "*a"},
 		tc{"scalar-empty", "&a \"\"", "*a"},
 		tc{"scalar-5", "&a hello", "*a"},
 		tc{"scalar-100", "&a " + strings.Repeat("x", 100), "*a"},
