@@ -45,7 +45,7 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 		// library: nodeToValue walks the tree once in memory, avoiding the
 		// yaml.v2-decode + json.Marshal + json.Unmarshal chain that
 		// sigs.k8s.io/yaml performs internally on every document.
-		val, err := nodeToValue(&node)
+		val, err := nodeToValue(&node, map[*yaml.Node]bool{})
 		if err != nil {
 			slog.Debug("skipping document", "app", appName, "err", err)
 			continue
@@ -92,21 +92,29 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 // — including !!str and !!timestamp — kept as a plain string, matching JSON's
 // lack of a native date/time type and avoiding go-yaml's generic-decode
 // behavior of turning bare dates into time.Time.
-func nodeToValue(n *yaml.Node) (any, error) {
+func nodeToValue(n *yaml.Node, expanding map[*yaml.Node]bool) (any, error) {
 	switch n.Kind {
 	case yaml.DocumentNode:
 		if len(n.Content) == 0 {
 			return nil, nil
 		}
-		return nodeToValue(n.Content[0])
+		return nodeToValue(n.Content[0], expanding)
 
 	case yaml.AliasNode:
-		return nodeToValue(n.Alias)
+		// Alias targets being expanded are tracked so a self-referencing
+		// anchor is rejected instead of recursing until the stack overflows.
+		if expanding[n.Alias] {
+			return nil, fmt.Errorf("anchor %q value contains itself", n.Value)
+		}
+		expanding[n.Alias] = true
+		v, err := nodeToValue(n.Alias, expanding)
+		delete(expanding, n.Alias)
+		return v, err
 
 	case yaml.MappingNode:
 		m := make(map[string]any, len(n.Content)/2)
 		for i := 0; i+1 < len(n.Content); i += 2 {
-			k, err := nodeToValue(n.Content[i])
+			k, err := nodeToValue(n.Content[i], expanding)
 			if err != nil {
 				return nil, err
 			}
@@ -114,7 +122,7 @@ func nodeToValue(n *yaml.Node) (any, error) {
 			if !ok {
 				ks = fmt.Sprint(k)
 			}
-			v, err := nodeToValue(n.Content[i+1])
+			v, err := nodeToValue(n.Content[i+1], expanding)
 			if err != nil {
 				return nil, err
 			}
@@ -125,7 +133,7 @@ func nodeToValue(n *yaml.Node) (any, error) {
 	case yaml.SequenceNode:
 		s := make([]any, len(n.Content))
 		for i, c := range n.Content {
-			v, err := nodeToValue(c)
+			v, err := nodeToValue(c, expanding)
 			if err != nil {
 				return nil, err
 			}

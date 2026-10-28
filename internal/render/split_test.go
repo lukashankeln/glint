@@ -255,3 +255,39 @@ metadata:
 	require.Error(t, err)
 	assert.Nil(t, manifests)
 }
+
+func TestSplitYAML_SelfReferentialAnchorSkipped(t *testing.T) {
+	tests := []struct {
+		name string
+		data string
+	}{
+		{"direct", "data: &a {k: *a}"},
+		{"indirect", "data: &a {k: &b {j: *a}}"},
+		{"sequence", "data: &a [*a]"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			stream := []byte(`apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cm1
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cyclic
+` + tc.data + `
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+`)
+			manifests, err := SplitYAML(stream, "test-app", "test.yaml", false)
+			require.NoError(t, err)
+			require.Len(t, manifests, 2)
+			assert.Equal(t, "cm1", manifests[0].Name)
+			assert.Equal(t, "web", manifests[1].Name)
+		})
+	}
+}
