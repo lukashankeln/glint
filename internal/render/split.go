@@ -103,6 +103,10 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 // Detection works on the yaml.v3 Node, which drops a bare non-specific "!" tag,
 // so `! "<<"` (a merge key to go-yaml v2 / Kubernetes) is seen here as the
 // literal key "<<". This matches the old v3 re-encode pipeline, not raw sigs.k8s.io/yaml.
+//
+// Alias expansion is bounded with yaml.v3's excessive-aliasing heuristic, so a
+// "billion laughs" document fails with errExcessiveAliasing instead of
+// exhausting CPU and memory; the counters are per call, i.e. per document.
 func nodeToValue(n *yaml.Node) (any, error) {
 	c := converter{expanding: map[*yaml.Node]bool{}}
 	return c.convert(n)
@@ -110,9 +114,46 @@ func nodeToValue(n *yaml.Node) (any, error) {
 
 // converter carries the per-call state of nodeToValue. expanding holds the
 // alias targets currently being converted, to detect anchors that contain
-// themselves.
+// themselves. decodeCount, aliasCount and aliasDepth mirror the fields of the
+// same names on yaml.v3's decoder and drive the excessive-aliasing guard.
 type converter struct {
-	expanding map[*yaml.Node]bool
+	expanding   map[*yaml.Node]bool
+	decodeCount int
+	aliasCount  int
+	aliasDepth  int
+}
+
+var errExcessiveAliasing = errors.New("document contains excessive aliasing")
+
+// Ported from gopkg.in/yaml.v3 decode.go (MIT/Apache-2.0, Copyright (c) 2011-2019
+// Canonical Ltd): the constants and allowedAliasRatio are copied unchanged.
+const (
+	// 400,000 decode operations is ~500kb of dense object declarations, or
+	// ~5kb of dense object declarations with 10000% alias expansion
+	alias_ratio_range_low = 400000
+
+	// 4,000,000 decode operations is ~5MB of dense object declarations, or
+	// ~4.5MB of dense object declarations with 10% alias expansion
+	alias_ratio_range_high = 4000000
+
+	// alias_ratio_range is the range over which we scale allowed alias ratios
+	alias_ratio_range = float64(alias_ratio_range_high - alias_ratio_range_low)
+)
+
+func allowedAliasRatio(decodeCount int) float64 {
+	switch {
+	case decodeCount <= alias_ratio_range_low:
+		// allow 99% to come from alias expansion for small-to-medium documents
+		return 0.99
+	case decodeCount >= alias_ratio_range_high:
+		// allow 10% to come from alias expansion for very large documents
+		return 0.10
+	default:
+		// scale smoothly from 99% down to 10% over the range.
+		// this maps to 396,000 - 400,000 allowed alias-driven decodes over the range.
+		// 400,000 decode operations is ~100MB of allocations in worst-case scenarios (single-item maps).
+		return 0.99 - 0.89*(float64(decodeCount-alias_ratio_range_low)/alias_ratio_range)
+	}
 }
 
 // isMergeKey mirrors yaml.v3's own merge-key detection, so a quoted "<<" or a
@@ -142,7 +183,11 @@ func (c *converter) expand(alias *yaml.Node) (any, error) {
 		return nil, fmt.Errorf("anchor %q value contains itself", name)
 	}
 	c.expanding[target] = true
-	defer delete(c.expanding, target)
+	c.aliasDepth++
+	defer func() {
+		c.aliasDepth--
+		delete(c.expanding, target)
+	}()
 	return c.convert(target)
 }
 
@@ -189,6 +234,13 @@ func (c *converter) merge(m map[string]any, v *yaml.Node) error {
 }
 
 func (c *converter) convert(n *yaml.Node) (any, error) {
+	c.decodeCount++
+	if c.aliasDepth > 0 {
+		c.aliasCount++
+	}
+	if c.aliasCount > 100 && c.decodeCount > 1000 && float64(c.aliasCount)/float64(c.decodeCount) > allowedAliasRatio(c.decodeCount) {
+		return nil, errExcessiveAliasing
+	}
 	switch n.Kind {
 	case yaml.DocumentNode:
 		if len(n.Content) == 0 {
