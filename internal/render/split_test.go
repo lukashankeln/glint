@@ -688,3 +688,79 @@ func TestSplitYAML_YAML11BoolIssueExample(t *testing.T) {
 	d := manifests[0].Object["data"].(map[string]any)
 	assert.Equal(t, map[string]any{"true": false, "y": float64(2), "q": "yes"}, d)
 }
+
+// parseNode parses a single YAML document into a Node tree.
+func parseNode(t *testing.T, doc string) *yaml.Node {
+	t.Helper()
+	var node yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte(doc), &node))
+	return &node
+}
+
+// aliasedScalarDoc builds a ConfigMap with one anchored string of strLen bytes
+// and a list of n aliases to it.
+func aliasedScalarDoc(name string, strLen, n int) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: %s\ndata:\n  s: &s %s\n  l:\n", name, strings.Repeat("a", strLen))
+	b.WriteString(strings.Repeat("  - *s\n", n))
+	return b.String()
+}
+
+func TestNodeToValue_AliasedScalarAmplificationRejected(t *testing.T) {
+	// The alias ratio is ~0.5, so only the byte budget catches this: 2000
+	// copies of 16 KiB would be ~32 MB.
+	node := parseNode(t, aliasedScalarDoc("amp", 16<<10, 2000))
+
+	_, err := nodeToValue(node)
+	require.ErrorIs(t, err, errExcessiveAliasExpansion)
+}
+
+func TestNodeToValue_AliasedMappingAmplificationRejected(t *testing.T) {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%sdata:\n  m: &m {k: %s}\n  l:\n", mergeDocHeader, strings.Repeat("a", 16<<10))
+	b.WriteString(strings.Repeat("  - *m\n", 200))
+
+	_, err := nodeToValue(parseNode(t, b.String()))
+	require.ErrorIs(t, err, errExcessiveAliasExpansion)
+}
+
+func TestSplitYAML_AliasAmplificationSkipsDocument(t *testing.T) {
+	good := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: good\n"
+	data := []byte(aliasedScalarDoc("amp", 16<<10, 2000) + "---\n" + good)
+
+	manifests, err := SplitYAML(data, "app", "file.yaml", false)
+	require.NoError(t, err)
+	require.Len(t, manifests, 1)
+	assert.Equal(t, "good", manifests[0].Name)
+}
+
+func TestSplitYAML_AliasBudgetSharedAcrossStream(t *testing.T) {
+	// Each document alone expands 40 * (16 KiB + 1) bytes, within the budget;
+	// both together are not.
+	const strLen, n = 16 << 10, 40
+	cost := n * (strLen + 1)
+	data := []byte(aliasedScalarDoc("first", strLen, n) + "---\n" + aliasedScalarDoc("second", strLen, n))
+	budget := aliasByteBudget(len(data))
+	require.Less(t, cost, budget, "fixture: one document must fit")
+	require.Greater(t, 2*cost, budget, "fixture: two documents must not fit")
+
+	manifests, err := SplitYAML(data, "app", "file.yaml", false)
+	require.NoError(t, err)
+	require.Len(t, manifests, 1)
+	assert.Equal(t, "first", manifests[0].Name)
+}
+
+func TestNodeToValueBudget_Edge(t *testing.T) {
+	// The anchored scalar is free; each alias charges len("abc")+1 = 4 bytes.
+	const doc = "[&s abc, *s]"
+
+	budget := 4
+	v, err := nodeToValueBudget(parseNode(t, doc), &budget)
+	require.NoError(t, err)
+	assert.Equal(t, []any{"abc", "abc"}, v)
+	assert.Equal(t, 0, budget)
+
+	budget = 3
+	_, err = nodeToValueBudget(parseNode(t, doc), &budget)
+	require.ErrorIs(t, err, errExcessiveAliasExpansion)
+}

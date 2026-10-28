@@ -17,9 +17,14 @@ import (
 // SplitYAML splits a multi-document YAML stream into individual Manifest objects.
 // Documents without apiVersion/kind are skipped with a debug log.
 // Empty documents and comment-only docs are skipped silently.
-// A malformed document returns an error rather than being dropped.
+// A document that fails to decode returns an error. A document that decodes but
+// fails conversion (alias limits, invalid map keys, self-referential or unknown
+// anchors) is skipped with a debug log.
 func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([]manifest.Manifest, error) {
 	var manifests []manifest.Manifest
+
+	// One alias byte budget for the whole stream: see nodeToValue.
+	budget := aliasByteBudget(len(data))
 
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	for {
@@ -45,7 +50,7 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 		// library: nodeToValue walks the tree once in memory, avoiding the
 		// yaml.v2-decode + json.Marshal + json.Unmarshal chain that
 		// sigs.k8s.io/yaml performs internally on every document.
-		val, err := nodeToValue(&node)
+		val, err := nodeToValueBudget(&node, &budget)
 		if err != nil {
 			slog.Debug("skipping document", "app", appName, "err", err)
 			continue
@@ -113,16 +118,30 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 // so `! "<<"` (a merge key to go-yaml v2 / Kubernetes) is seen here as the
 // literal key "<<". This matches the old v3 re-encode pipeline, not raw sigs.k8s.io/yaml.
 //
-// Alias expansion is bounded with yaml.v3's excessive-aliasing heuristic, so a
-// "billion laughs" document fails with errExcessiveAliasing instead of
-// exhausting CPU and memory; the counters are per call, i.e. per document.
+// Alias expansion is bounded two ways. yaml.v3's excessive-aliasing heuristic
+// makes a "billion laughs" document fail with errExcessiveAliasing instead of
+// exhausting CPU and memory; its counters are per call, i.e. per document. A
+// byte budget catches what the ratio misses, a large scalar aliased many times:
+// every scalar converted through an alias is charged len(Value)+1 bytes and
+// every aliased mapping or sequence a constant 2, and exceeding the budget
+// fails with errExcessiveAliasExpansion. Here the budget is the floor
+// (aliasedBytesFloor); SplitYAML shares one budget, aliasByteBudget(len(data)),
+// across all documents of a stream, so the result depends on order: a later
+// document can be the one that is skipped.
 //
 // An alias whose anchor is defined outside the given tree (yaml.v3 keeps
 // anchors across Decode calls on one stream) is an "unknown anchor" error, as
 // when each document was parsed alone. A mapping key that converts to a
 // mapping or sequence is an "invalid map key" error, as in sigs.k8s.io/yaml.
 func nodeToValue(n *yaml.Node) (any, error) {
-	c := converter{expanding: map[*yaml.Node]bool{}, anchors: map[*yaml.Node]bool{}}
+	budget := aliasByteBudget(0)
+	return nodeToValueBudget(n, &budget)
+}
+
+// nodeToValueBudget is nodeToValue with a caller-supplied alias byte budget,
+// decremented in place so that several calls can share it.
+func nodeToValueBudget(n *yaml.Node, budget *int) (any, error) {
+	c := converter{expanding: map[*yaml.Node]bool{}, anchors: map[*yaml.Node]bool{}, aliasBytesLeft: budget}
 	collectAnchors(n, c.anchors)
 	return c.convert(n)
 }
@@ -147,12 +166,16 @@ func collectAnchors(n *yaml.Node, set map[*yaml.Node]bool) {
 // alias targets currently being converted, to detect anchors that contain
 // themselves. decodeCount, aliasCount and aliasDepth mirror the fields of the
 // same names on yaml.v3's decoder and drive the excessive-aliasing guard.
+// aliasBytesLeft is the remaining alias byte budget, possibly shared with other
+// converters (one per document of a stream).
 type converter struct {
 	expanding   map[*yaml.Node]bool
 	anchors     map[*yaml.Node]bool // anchored nodes of the document being converted
 	decodeCount int
 	aliasCount  int
 	aliasDepth  int
+
+	aliasBytesLeft *int
 }
 
 // yaml11Bools holds the go-yaml v2 (YAML 1.1) bool literals that yaml.v3's
@@ -169,6 +192,31 @@ const nonPlainStyle = yaml.TaggedStyle | yaml.DoubleQuotedStyle | yaml.SingleQuo
 	yaml.LiteralStyle | yaml.FoldedStyle
 
 var errExcessiveAliasing = errors.New("document contains excessive aliasing")
+
+var errExcessiveAliasExpansion = errors.New("document expands too many bytes through aliases")
+
+const (
+	// aliasedBytesFloor is the minimum alias byte budget.
+	aliasedBytesFloor = 1 << 20
+	// aliasedBytesPerInputByte scales the budget with the size of the input.
+	aliasedBytesPerInputByte = 10
+	// aliasedNodeCost is charged for each aliased mapping or sequence node.
+	aliasedNodeCost = 2
+)
+
+// aliasByteBudget returns the alias byte budget for an input of inputLen bytes.
+func aliasByteBudget(inputLen int) int {
+	return max(aliasedBytesFloor, aliasedBytesPerInputByte*inputLen)
+}
+
+// charge deducts n bytes from the alias budget, failing once it is overdrawn.
+func (c *converter) charge(n int) error {
+	*c.aliasBytesLeft -= n
+	if *c.aliasBytesLeft < 0 {
+		return errExcessiveAliasExpansion
+	}
+	return nil
+}
 
 // Ported from gopkg.in/yaml.v3 v3.0.1 decode.go (Copyright (c) 2011-2019 Canonical Ltd,
 // Apache License 2.0, http://www.apache.org/licenses/LICENSE-2.0): the constants and
@@ -305,6 +353,11 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 		return c.expand(n)
 
 	case yaml.MappingNode:
+		if c.aliasDepth > 0 {
+			if err := c.charge(aliasedNodeCost); err != nil {
+				return nil, err
+			}
+		}
 		m := make(map[string]any, len(n.Content)/2)
 		for i := 0; i+1 < len(n.Content); i += 2 {
 			if isMergeKey(n.Content[i]) {
@@ -334,6 +387,11 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 		return m, nil
 
 	case yaml.SequenceNode:
+		if c.aliasDepth > 0 {
+			if err := c.charge(aliasedNodeCost); err != nil {
+				return nil, err
+			}
+		}
 		s := make([]any, len(n.Content))
 		for i, e := range n.Content {
 			v, err := c.convert(e)
@@ -345,6 +403,11 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 		return s, nil
 
 	case yaml.ScalarNode:
+		if c.aliasDepth > 0 {
+			if err := c.charge(len(n.Value) + 1); err != nil {
+				return nil, err
+			}
+		}
 		switch n.Tag {
 		case "!!null":
 			return nil, nil
