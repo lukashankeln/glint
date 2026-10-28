@@ -92,21 +92,119 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 // — including !!str and !!timestamp — kept as a plain string, matching JSON's
 // lack of a native date/time type and avoiding go-yaml's generic-decode
 // behavior of turning bare dates into time.Time.
+//
+// Merge keys (<<) follow go-yaml v2 semantics: mapping pairs are processed in
+// order, so a merge overwrites explicit keys before it and is overwritten by
+// explicit keys after it. A merge value must be a mapping, an alias to a
+// mapping, or a sequence of those (applied in reverse so earlier sources win);
+// anything else is an error. Merging is shallow. Self-referential anchors
+// return an error instead of recursing forever.
 func nodeToValue(n *yaml.Node) (any, error) {
+	c := converter{expanding: map[*yaml.Node]bool{}}
+	return c.convert(n)
+}
+
+// converter carries the per-call state of nodeToValue. expanding holds the
+// alias targets currently being converted, to detect anchors that contain
+// themselves.
+type converter struct {
+	expanding map[*yaml.Node]bool
+}
+
+// isMergeKey mirrors yaml.v3's own merge-key detection, so a quoted "<<" or a
+// "<<" with an explicit non-merge tag stays a literal key.
+func isMergeKey(n *yaml.Node) bool {
+	if n.Kind != yaml.ScalarNode || n.Value != "<<" {
+		return false
+	}
+	switch n.Tag {
+	case "", "!", "!!merge", "tag:yaml.org,2002:merge":
+		return true
+	}
+	return false
+}
+
+// expand converts the target of an alias node, guarding against cycles.
+func (c *converter) expand(alias *yaml.Node) (any, error) {
+	target := alias.Alias
+	if target == nil {
+		return nil, fmt.Errorf("alias %q has no target", alias.Value)
+	}
+	if c.expanding[target] {
+		name := target.Anchor
+		if name == "" {
+			name = alias.Value
+		}
+		return nil, fmt.Errorf("anchor %q value contains itself", name)
+	}
+	c.expanding[target] = true
+	defer delete(c.expanding, target)
+	return c.convert(target)
+}
+
+// mergeSource converts one merge source (a mapping or an alias to a mapping)
+// and copies its top-level entries into m.
+func (c *converter) mergeSource(m map[string]any, src *yaml.Node) error {
+	var (
+		v   any
+		err error
+	)
+	switch {
+	case src.Kind == yaml.MappingNode:
+		v, err = c.convert(src)
+	case src.Kind == yaml.AliasNode && src.Alias != nil && src.Alias.Kind == yaml.MappingNode:
+		v, err = c.expand(src)
+	default:
+		return errMergeValue
+	}
+	if err != nil {
+		return err
+	}
+	sm, ok := v.(map[string]any)
+	if !ok {
+		return errMergeValue
+	}
+	for k, x := range sm {
+		m[k] = x
+	}
+	return nil
+}
+
+var errMergeValue = fmt.Errorf("map merge requires map or sequence of maps as the value")
+
+func (c *converter) merge(m map[string]any, v *yaml.Node) error {
+	if v.Kind == yaml.SequenceNode {
+		for i := len(v.Content) - 1; i >= 0; i-- {
+			if err := c.mergeSource(m, v.Content[i]); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return c.mergeSource(m, v)
+}
+
+func (c *converter) convert(n *yaml.Node) (any, error) {
 	switch n.Kind {
 	case yaml.DocumentNode:
 		if len(n.Content) == 0 {
 			return nil, nil
 		}
-		return nodeToValue(n.Content[0])
+		return c.convert(n.Content[0])
 
 	case yaml.AliasNode:
-		return nodeToValue(n.Alias)
+		return c.expand(n)
 
 	case yaml.MappingNode:
 		m := make(map[string]any, len(n.Content)/2)
 		for i := 0; i+1 < len(n.Content); i += 2 {
-			k, err := nodeToValue(n.Content[i])
+			if isMergeKey(n.Content[i]) {
+				if err := c.merge(m, n.Content[i+1]); err != nil {
+					return nil, err
+				}
+				continue
+			}
+			k, err := c.convert(n.Content[i])
 			if err != nil {
 				return nil, err
 			}
@@ -114,7 +212,7 @@ func nodeToValue(n *yaml.Node) (any, error) {
 			if !ok {
 				ks = fmt.Sprint(k)
 			}
-			v, err := nodeToValue(n.Content[i+1])
+			v, err := c.convert(n.Content[i+1])
 			if err != nil {
 				return nil, err
 			}
@@ -124,8 +222,8 @@ func nodeToValue(n *yaml.Node) (any, error) {
 
 	case yaml.SequenceNode:
 		s := make([]any, len(n.Content))
-		for i, c := range n.Content {
-			v, err := nodeToValue(c)
+		for i, e := range n.Content {
+			v, err := c.convert(e)
 			if err != nil {
 				return nil, err
 			}
@@ -235,4 +333,3 @@ func joinKey(parts []string) string {
 	}
 	return b.String()
 }
-

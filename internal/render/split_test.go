@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	sigsyaml "sigs.k8s.io/yaml"
 )
 
 func TestSplitYAML_MultiDoc(t *testing.T) {
@@ -165,9 +166,9 @@ func TestMergeValues(t *testing.T) {
 
 func TestHelmSetToValues(t *testing.T) {
 	set := map[string]string{
-		"image.tag":        "v1.0",
-		"replicaCount":     "3",
-		"service.port":     "8080",
+		"image.tag":    "v1.0",
+		"replicaCount": "3",
+		"service.port": "8080",
 	}
 	vals := helmSetToValues(set)
 	imgMap, ok := vals["image"].(map[string]any)
@@ -254,4 +255,196 @@ metadata:
 	manifests, err := SplitYAML(data, "app", "bad.yaml", false)
 	require.Error(t, err)
 	assert.Nil(t, manifests)
+}
+
+const mergeDocHeader = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm1\n"
+
+func TestSplitYAML_MergeKeysMatchSigsYAML(t *testing.T) {
+	cases := []struct {
+		name string
+		data string
+	}{
+		{"merge before explicit keys", `
+  a: &a {x: 1, yy: 2}
+  m:
+    <<: *a
+    yy: 3
+    z: 4
+`},
+		{"merge after explicit keys", `
+  a: &a {x: 1, yy: 2}
+  m:
+    yy: 3
+    z: 4
+    <<: *a
+`},
+		{"sequence precedence", `
+  a: &a {x: 1, yy: a}
+  b: &b {x: 2, yy: b, z: b}
+  m:
+    <<: [*a, *b]
+`},
+		{"two merge keys", `
+  a: &a {x: 1, yy: a}
+  b: &b {x: 2, z: b}
+  m:
+    <<: *a
+    <<: *b
+`},
+		{"nested merge inside merge source", `
+  a: &a {x: 1, yy: 1}
+  b: &b {<<: *a, yy: 2, z: 2}
+  m:
+    <<: *b
+`},
+		{"chained anchor", `
+  a: &a {x: 1}
+  b: &b {yy: 2, <<: *a}
+  c: &c {<<: *b}
+  m:
+    <<: *c
+    w: 3
+`},
+		{"empty mapping merge", `
+  m:
+    <<: {}
+    k: v
+`},
+		{"empty sequence merge", `
+  m:
+    <<: []
+    k: v
+`},
+		{"quoted merge key is literal", `
+  a: &a {x: 1}
+  m:
+    '<<': *a
+`},
+		{"merge tag on other scalar is literal", `
+  a: &a {x: 1}
+  m:
+    !!merge foo: *a
+`},
+		{"bang tag merge key", `
+  a: &a {x: 1, yy: 2}
+  m:
+    ! <<: *a
+    yy: 5
+`},
+		{"merge inside mappings in a sequence", `
+  a: &a {x: 1}
+  list:
+    - {<<: *a, name: one}
+    - name: two
+      <<: *a
+`},
+		{"shallow nested override", `
+  a: &a
+    nest: {p: 1, q: 2}
+    k: 1
+  m:
+    <<: *a
+    nest: {p: 9}
+`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			data := []byte(mergeDocHeader + "data:" + tc.data)
+			var want map[string]any
+			require.NoError(t, sigsyaml.Unmarshal(data, &want))
+
+			manifests, err := SplitYAML(data, "app", "file.yaml", false)
+			require.NoError(t, err)
+			require.Len(t, manifests, 1)
+			assert.Equal(t, want, manifests[0].Object)
+		})
+	}
+}
+
+func TestSplitYAML_MergeKeyIssueExample(t *testing.T) {
+	data := []byte(mergeDocHeader + `data:
+  base: &base
+    image: nginx:latest
+    securityContext:
+      runAsNonRoot: true
+  containers:
+    - <<: *base
+      name: c
+`)
+	manifests, err := SplitYAML(data, "app", "file.yaml", false)
+	require.NoError(t, err)
+	require.Len(t, manifests, 1)
+
+	d := manifests[0].Object["data"].(map[string]any)
+	cs := d["containers"].([]any)
+	require.Len(t, cs, 1)
+	c := cs[0].(map[string]any)
+	assert.Equal(t, "nginx:latest", c["image"])
+	assert.Equal(t, map[string]any{"runAsNonRoot": true}, c["securityContext"])
+	assert.Equal(t, "c", c["name"])
+	assert.NotContains(t, c, "<<")
+}
+
+func TestSplitYAML_TopLevelMergeSuppliesKind(t *testing.T) {
+	data := []byte(`<<: {apiVersion: v1, kind: ConfigMap}
+metadata:
+  name: cm1
+`)
+	manifests, err := SplitYAML(data, "app", "file.yaml", false)
+	require.NoError(t, err)
+	require.Len(t, manifests, 1)
+	assert.Equal(t, "ConfigMap", manifests[0].Kind)
+	assert.Equal(t, "v1", manifests[0].APIVersion)
+	assert.Equal(t, "cm1", manifests[0].Name)
+}
+
+func TestSplitYAML_InvalidMergeValueSkipsDocument(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"scalar", "  m:\n    <<: 5\n"},
+		{"null", "  m:\n    <<: null\n"},
+		{"bare", "  m:\n    <<:\n"},
+		{"sequence with scalar", "  m:\n    <<: [{x: 1}, 5]\n"},
+		{"alias to sequence", "  s: &s [1, 2]\n  m:\n    <<: *s\n"},
+		{"sequence of alias to sequence", "  s: &s [1, 2]\n  m:\n    <<: [*s]\n"},
+	}
+	good := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: good\n"
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			bad := mergeDocHeader + "data:\n" + tc.body
+
+			var tmp map[string]any
+			assert.Error(t, sigsyaml.Unmarshal([]byte(bad), &tmp))
+
+			data := []byte(good + "---\n" + bad + "---\n" + good[:len(good)-5] + "good2\n")
+			manifests, err := SplitYAML(data, "app", "file.yaml", false)
+			require.NoError(t, err)
+			require.Len(t, manifests, 2)
+			assert.Equal(t, "good", manifests[0].Name)
+			assert.Equal(t, "good2", manifests[1].Name)
+		})
+	}
+}
+
+func TestSplitYAML_SelfReferentialAnchorSkipsDocument(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"mapping merges itself", "  m: &a {k: 1, <<: *a}\n"},
+		{"sequence contains itself", "  m: &a [*a]\n"},
+	}
+	good := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: good\n"
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			bad := mergeDocHeader + "data:\n" + tc.body
+			data := []byte(bad + "---\n" + good)
+			manifests, err := SplitYAML(data, "app", "file.yaml", false)
+			require.NoError(t, err)
+			require.Len(t, manifests, 1)
+			assert.Equal(t, "good", manifests[0].Name)
+		})
+	}
 }
