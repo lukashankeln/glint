@@ -85,6 +85,7 @@ The `message` field is a Go `text/template`. Available variables:
 | `{{ .name }}` | Resource name |
 | `{{ .namespace }}` | Resource namespace |
 | `{{ .apiVersion }}` | API version |
+| `{{ .severity }}` | Rule severity (`error`, `warning`, or `info`) |
 
 ---
 
