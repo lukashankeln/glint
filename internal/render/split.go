@@ -29,9 +29,9 @@ var (
 // Empty documents and comment-only docs are skipped silently.
 // A stream over maxStreamBytes, or with more than maxStreamDocuments
 // documents (empty ones included), returns an error wrapping errStreamTooLarge
-// or errTooManyDocuments. A document that fails to decode returns an error. A document that decodes but
-// fails conversion (e.g. alias limits, invalid map keys, self-referential or
-// unknown anchors) is skipped with a debug log.
+// or errTooManyDocuments. A document that fails to decode returns an error.
+// A document that decodes but fails conversion (e.g. alias limits, invalid map
+// keys, self-referential or unknown anchors) is skipped with a debug log.
 func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([]manifest.Manifest, error) {
 	if len(data) > maxStreamBytes {
 		return nil, fmt.Errorf("YAML stream is %d bytes, over the %d-byte limit: %w",

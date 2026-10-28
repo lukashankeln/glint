@@ -41,6 +41,8 @@ func TestSplitYAML_DocumentCap(t *testing.T) {
 	assert.True(t, errors.Is(err, errTooManyDocuments))
 
 	// Empty documents count too.
+	_, err = SplitYAML([]byte(strings.Repeat("---\n", 5)), "app", "src", false)
+	require.NoError(t, err)
 	_, err = SplitYAML([]byte(strings.Repeat("---\n", 6)), "app", "src", false)
 	assert.True(t, errors.Is(err, errTooManyDocuments))
 }
@@ -64,6 +66,8 @@ func TestReadFileCapped(t *testing.T) {
 	assert.Equal(t, "12345", string(data))
 	_, err = readFileCapped(p, 4)
 	assert.True(t, errors.Is(err, errStreamTooLarge))
+	// A regular file is rejected by its size, before any read.
+	assert.Contains(t, err.Error(), "file is 5 bytes")
 
 	_, err = readFileCapped(filepath.Join(dir, "missing"), 4)
 	assert.Error(t, err)

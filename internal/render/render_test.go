@@ -228,4 +228,7 @@ func TestRawRenderer_OversizedFile(t *testing.T) {
 	_, err := New(app, defaultCfg()).Render(context.Background(), app)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, errStreamTooLarge))
+	// The capped read in raw.go rejects the file, before SplitYAML sees it.
+	assert.Contains(t, err.Error(), "reading ")
+	assert.Contains(t, err.Error(), "file is ")
 }
