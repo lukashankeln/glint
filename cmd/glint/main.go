@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime/pprof"
 	"time"
 
 	"github.com/lukashankeln/glint/internal/cli"
@@ -13,7 +14,26 @@ func main() {
 	perf := os.Getenv("GLINT_PERF") != ""
 	start := time.Now()
 
+	if p := os.Getenv("GLINT_CPUPROFILE"); p != "" {
+		f, err := os.Create(p)
+		if err != nil {
+			panic(err)
+		}
+		pprof.StartCPUProfile(f)
+	}
+
 	code := run()
+
+	pprof.StopCPUProfile()
+
+	if p := os.Getenv("GLINT_MEMPROFILE"); p != "" {
+		f, err := os.Create(p)
+		if err != nil {
+			panic(err)
+		}
+		pprof.WriteHeapProfile(f)
+		f.Close()
+	}
 
 	if perf {
 		printPerfStats(time.Since(start))

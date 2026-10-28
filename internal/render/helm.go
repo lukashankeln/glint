@@ -1,18 +1,28 @@
 package render
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/url"
 	"os"
 	"strings"
+	"sync"
 
 	"helm.sh/helm/v4/pkg/action"
+	"helm.sh/helm/v4/pkg/chart"
 	chartutil "helm.sh/helm/v4/pkg/chart/common"
 	"helm.sh/helm/v4/pkg/chart/loader"
 	helmenv "helm.sh/helm/v4/pkg/cli"
+	"helm.sh/helm/v4/pkg/downloader"
+	"helm.sh/helm/v4/pkg/getter"
 	ri "helm.sh/helm/v4/pkg/release"
 	"helm.sh/helm/v4/pkg/registry"
+	"helm.sh/helm/v4/pkg/repo/v1"
 
 	"github.com/lukashankeln/glint/internal/config"
 	"github.com/lukashankeln/glint/internal/discovery"
@@ -75,10 +85,14 @@ func (r *HelmRenderer) renderSDK(ctx context.Context, app discovery.DiscoveredAp
 		install.APIVersions = append(install.APIVersions, r.cfg.Render.Helm.APIVersions...)
 	}
 
-	var chartPath string
+	var ch chart.Charter
 	if app.RootPath != "" {
 		// Local chart
-		chartPath = app.RootPath
+		var err error
+		ch, err = loader.Load(app.RootPath)
+		if err != nil {
+			return nil, fmt.Errorf("loading chart at %q: %w", app.RootPath, err)
+		}
 	} else {
 		// Remote chart — locate and download.
 		repoURL := normalizeRepoURL(app.RepoURL)
@@ -86,28 +100,27 @@ func (r *HelmRenderer) renderSDK(ctx context.Context, app discovery.DiscoveredAp
 			install.ChartPathOptions.Version = app.ChartVersion
 		}
 
-		var chartRef string
 		if strings.HasPrefix(repoURL, "oci://") {
 			// For OCI registries, LocateChart takes the OCI path when registry.IsOCI(name)
 			// is true. Passing the full ref as name (with empty RepoURL) triggers that path;
 			// setting RepoURL to an OCI URL instead causes Helm to call
 			// FindChartInAuthAndTLSAndPassRepoURL, which fails for OCI.
-			chartRef = strings.TrimRight(repoURL, "/") + "/" + app.ChartName
+			chartRef := strings.TrimRight(repoURL, "/") + "/" + app.ChartName
+			located, err := install.LocateChart(chartRef, settings)
+			if err != nil {
+				return nil, fmt.Errorf("locating remote chart %q from %q: %w", app.ChartName, app.RepoURL, err)
+			}
+			ch, err = loader.Load(located)
+			if err != nil {
+				return nil, fmt.Errorf("loading chart at %q: %w", located, err)
+			}
 		} else {
-			install.ChartPathOptions.RepoURL = repoURL
-			chartRef = app.ChartName
+			var err error
+			ch, err = loadRemoteChart(ctx, repoURL, app.ChartName, app.ChartVersion, settings)
+			if err != nil {
+				return nil, fmt.Errorf("locating remote chart %q from %q: %w", app.ChartName, app.RepoURL, err)
+			}
 		}
-
-		located, err := install.LocateChart(chartRef, settings)
-		if err != nil {
-			return nil, fmt.Errorf("locating remote chart %q from %q: %w", app.ChartName, app.RepoURL, err)
-		}
-		chartPath = located
-	}
-
-	ch, err := loader.Load(chartPath)
-	if err != nil {
-		return nil, fmt.Errorf("loading chart at %q: %w", chartPath, err)
 	}
 
 	vals, err := r.buildValues(app)
@@ -130,6 +143,174 @@ func (r *HelmRenderer) renderSDK(ctx context.Context, app discovery.DiscoveredAp
 	}
 
 	return SplitYAML([]byte(rendered), app.Name, "<rendered>", true)
+}
+
+// loadRemoteChart resolves and downloads a chart from a plain HTTP(S) chart
+// repository, bypassing Helm's own LocateChart/ChartDownloader resolution.
+//
+// Helm's own path re-downloads the target repo's entire index.yaml fresh on
+// every call (repo.FindChartInRepoURL, which discards the parsed result right
+// after use instead of caching it) and then, purely to pick up any per-repo
+// TLS/auth config, re-parses every OTHER locally cached repo index hunting for
+// the resolved chart URL's owner (ChartDownloader.scanReposForURL — its own
+// doc comment calls this "far from optimal"). Neither step depends on which
+// app or which chart within the repo is being resolved, so doing them once
+// per app instead of once per distinct repo URL turns a handful of MB of
+// index parsing into hundreds of MB once more than a couple of apps share a
+// repo (e.g. bitnami's ~26MB index.yaml). glint has no per-repo TLS/auth
+// config of its own to apply, so skipping scanReposForURL costs nothing here.
+//
+// loadRepoIndexCached fetches and parses a given repo's index at most once
+// per process; only the final chart content fetch below runs per app.
+func loadRemoteChart(ctx context.Context, repoURL, name, version string, settings *helmenv.EnvSettings) (chart.Charter, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	getters := getter.All(settings)
+
+	cacheDir, err := repoIndexCacheDir()
+	if err != nil {
+		return nil, fmt.Errorf("preparing chart repo cache: %w", err)
+	}
+
+	idx, err := loadRepoIndexCached(repoURL, getters, cacheDir)
+	if err != nil {
+		return nil, err
+	}
+
+	cv, err := idx.Get(name, version)
+	if err != nil {
+		return nil, fmt.Errorf("chart %q not found in %q index: %w", name, repoURL, err)
+	}
+	if len(cv.URLs) == 0 {
+		return nil, fmt.Errorf("chart %q in %q has no downloadable URLs", name, repoURL)
+	}
+
+	chartURL, err := repo.ResolveReferenceURL(repoURL, cv.URLs[0])
+	if err != nil {
+		return nil, fmt.Errorf("resolving chart URL for %q: %w", name, err)
+	}
+
+	data, err := fetchChartArchive(chartURL, cv.Digest, getters, settings.ContentCache)
+	if err != nil {
+		return nil, err
+	}
+	return loader.LoadArchive(data)
+}
+
+// fetchChartArchive downloads a chart archive, reusing Helm's own
+// content-addressed disk cache (keyed by the index entry's digest) the same
+// way ChartDownloader.DownloadToCache does, so a chart already fetched by a
+// plain `helm` invocation — or an earlier glint run — isn't re-downloaded.
+func fetchChartArchive(chartURL, digestString string, getters getter.Providers, contentCacheRoot string) (io.Reader, error) {
+	u, err := url.Parse(chartURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid chart URL %q: %w", chartURL, err)
+	}
+	g, err := getters.ByScheme(u.Scheme)
+	if err != nil {
+		return nil, fmt.Errorf("no getter for scheme %q: %w", u.Scheme, err)
+	}
+
+	cache := &downloader.DiskCache{Root: contentCacheRoot}
+
+	var digest [32]byte // zero if the index had no usable digest; filled in below from the download instead
+	if raw := digestString; raw != "" {
+		if _, after, ok := strings.Cut(raw, ":"); ok {
+			raw = after
+		}
+		if b, err := hex.DecodeString(raw); err == nil && len(b) == 32 {
+			copy(digest[:], b)
+			if pth, err := cache.Get(digest, downloader.CacheChart); err == nil {
+				if cached, err := os.ReadFile(pth); err == nil {
+					return bytes.NewReader(cached), nil
+				}
+			}
+		}
+	}
+
+	data, err := g.Get(chartURL, getter.WithAcceptHeader("application/gzip,application/octet-stream"))
+	if err != nil {
+		return nil, fmt.Errorf("downloading chart %q: %w", chartURL, err)
+	}
+
+	if digest == ([32]byte{}) {
+		digest = sha256.Sum256(data.Bytes())
+	}
+	if _, err := cache.Put(digest, bytes.NewReader(data.Bytes()), downloader.CacheChart); err != nil {
+		slog.Debug("failed to cache downloaded chart", "url", chartURL, "err", err)
+	}
+
+	return data, nil
+}
+
+// repoIndexCache memoizes parsed Helm chart-repo indexes keyed by repo URL,
+// shared by every HelmRenderer in the process (each app gets its own
+// HelmRenderer instance, so a renderer-scoped cache would not help). A failed
+// fetch is cached too: within one run a repo URL that doesn't resolve won't
+// resolve for the next app either, and retrying it per app would reintroduce
+// the redundant work this cache exists to avoid.
+var repoIndexCache sync.Map // repoURL string -> *repoIndexEntry
+
+type repoIndexEntry struct {
+	once sync.Once
+	idx  *repo.IndexFile
+	err  error
+}
+
+func loadRepoIndexCached(repoURL string, getters getter.Providers, cacheDir string) (*repo.IndexFile, error) {
+	v, _ := repoIndexCache.LoadOrStore(repoURL, &repoIndexEntry{})
+	e := v.(*repoIndexEntry)
+	e.once.Do(func() {
+		cr, err := repo.NewChartRepository(&repo.Entry{URL: repoURL, Name: repoCacheName(repoURL)}, getters)
+		if err != nil {
+			e.err = fmt.Errorf("configuring chart repository %q: %w", repoURL, err)
+			return
+		}
+		cr.CachePath = cacheDir
+
+		idxPath, err := cr.DownloadIndexFile()
+		if err != nil {
+			e.err = fmt.Errorf("downloading index for %q: %w", repoURL, err)
+			return
+		}
+		e.idx, e.err = repo.LoadIndexFile(idxPath)
+	})
+	return e.idx, e.err
+}
+
+// repoCacheName derives a stable, glint-namespaced cache file name for a repo
+// URL so entries never collide with each other or with the user's own named
+// Helm repos.
+func repoCacheName(repoURL string) string {
+	sum := sha256.Sum256([]byte(repoURL))
+	return "glint-" + hex.EncodeToString(sum[:8])
+}
+
+var (
+	repoIndexCacheDirOnce sync.Once
+	repoIndexCacheDirPath string
+	repoIndexCacheDirErr  error
+)
+
+// repoIndexCacheDir returns a process-lifetime temp directory for downloaded
+// repo indexes, created on first use. Kept separate from the user's real Helm
+// repository cache so this never writes into shared Helm state.
+func repoIndexCacheDir() (string, error) {
+	repoIndexCacheDirOnce.Do(func() {
+		repoIndexCacheDirPath, repoIndexCacheDirErr = os.MkdirTemp("", "glint-helm-repo-cache-")
+	})
+	return repoIndexCacheDirPath, repoIndexCacheDirErr
+}
+
+// CleanupHelmRepoCache removes the temp directory used to cache downloaded
+// chart-repo indexes across a run, if one was created. Safe to call even if
+// no remote Helm chart was ever rendered.
+func CleanupHelmRepoCache() {
+	if repoIndexCacheDirPath != "" {
+		os.RemoveAll(repoIndexCacheDirPath)
+	}
 }
 
 // buildValues merges all values sources: chart defaults -> values files -> inline -> --set.

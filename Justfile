@@ -14,5 +14,5 @@ perf *ARGS:
     set -euo pipefail
     bin="$(mktemp -t glint-perf)"
     go build -o "$bin" ./cmd/glint
-    GLINT_PERF=1 "$bin" {{ARGS}} > /dev/null
+     GLINT_PERF=1 GLINT_CPUPROFILE=cpu.prof GLINT_MEMPROFILE=mem.prof "$bin" {{ARGS}} > /dev/null
     rm -f "$bin"
