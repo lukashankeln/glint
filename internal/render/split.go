@@ -149,35 +149,25 @@ func nodeToValue(n *yaml.Node) (any, error) {
 // decremented in place so that several calls can share it.
 func nodeToValueBudget(n *yaml.Node, budget *int) (any, error) {
 	c := converter{expanding: map[*yaml.Node]bool{}, anchors: map[*yaml.Node]bool{}, aliasBytesLeft: budget}
-	collectAnchors(n, c.anchors)
 	return c.convert(n)
-}
-
-// collectAnchors records every anchored node (Anchor != "") of the tree rooted
-// at n, without following AliasNode.Alias. Alias targets always carry an anchor,
-// so membership tells whether a target belongs to this document. All children
-// are visited, anchored or not.
-func collectAnchors(n *yaml.Node, set map[*yaml.Node]bool) {
-	if n == nil {
-		return
-	}
-	if n.Anchor != "" {
-		set[n] = true
-	}
-	for _, ch := range n.Content {
-		collectAnchors(ch, set)
-	}
 }
 
 // converter carries the per-call state of nodeToValue. expanding holds the
 // alias targets currently being converted, to detect anchors that contain
-// themselves. decodeCount, aliasCount and aliasDepth mirror the fields of the
-// same names on yaml.v3's decoder and drive the excessive-aliasing guard.
+// themselves. anchors records every anchored node convert has reached so far
+// in this document, so an alias can be checked against it directly instead of
+// pre-walking the whole tree: YAML requires an anchor to be defined (and thus
+// already visited, since convert follows document order) before any alias
+// references it — yaml.v3 itself rejects forward references at parse time —
+// so the only way expand's lookup can miss is a target from outside this
+// document, e.g. an earlier document on the same decoder stream. decodeCount,
+// aliasCount and aliasDepth mirror the fields of the same names on yaml.v3's
+// decoder and drive the excessive-aliasing guard.
 // aliasBytesLeft is the remaining alias byte budget, possibly shared with other
 // converters (one per document of a stream).
 type converter struct {
 	expanding   map[*yaml.Node]bool
-	anchors     map[*yaml.Node]bool // anchored nodes of the document being converted
+	anchors     map[*yaml.Node]bool // anchored nodes reached so far in this document
 	decodeCount int
 	aliasCount  int
 	aliasDepth  int
@@ -345,6 +335,9 @@ func (c *converter) merge(m map[string]any, v *yaml.Node) error {
 }
 
 func (c *converter) convert(n *yaml.Node) (any, error) {
+	if n.Anchor != "" {
+		c.anchors[n] = true
+	}
 	c.decodeCount++
 	if c.aliasDepth > 0 {
 		c.aliasCount++
