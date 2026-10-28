@@ -113,20 +113,24 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 // when each document was parsed alone. A mapping key that converts to a
 // mapping or sequence is an "invalid map key" error, as in sigs.k8s.io/yaml.
 func nodeToValue(n *yaml.Node) (any, error) {
-	c := converter{expanding: map[*yaml.Node]bool{}, inTree: map[*yaml.Node]bool{}}
-	collectNodes(n, c.inTree)
+	c := converter{expanding: map[*yaml.Node]bool{}, anchors: map[*yaml.Node]bool{}}
+	collectAnchors(n, c.anchors)
 	return c.convert(n)
 }
 
-// collectNodes records every node of the tree rooted at n, without following
-// AliasNode.Alias, so only nodes belonging to this document are included.
-func collectNodes(n *yaml.Node, set map[*yaml.Node]bool) {
-	if n == nil || set[n] {
+// collectAnchors records every anchored node (Anchor != "") of the tree rooted
+// at n, without following AliasNode.Alias. Alias targets always carry an anchor,
+// so membership tells whether a target belongs to this document. All children
+// are visited, anchored or not.
+func collectAnchors(n *yaml.Node, set map[*yaml.Node]bool) {
+	if n == nil {
 		return
 	}
-	set[n] = true
+	if n.Anchor != "" {
+		set[n] = true
+	}
 	for _, ch := range n.Content {
-		collectNodes(ch, set)
+		collectAnchors(ch, set)
 	}
 }
 
@@ -136,7 +140,7 @@ func collectNodes(n *yaml.Node, set map[*yaml.Node]bool) {
 // same names on yaml.v3's decoder and drive the excessive-aliasing guard.
 type converter struct {
 	expanding   map[*yaml.Node]bool
-	inTree      map[*yaml.Node]bool // nodes of the document being converted
+	anchors     map[*yaml.Node]bool // anchored nodes of the document being converted
 	decodeCount int
 	aliasCount  int
 	aliasDepth  int
@@ -144,8 +148,11 @@ type converter struct {
 
 var errExcessiveAliasing = errors.New("document contains excessive aliasing")
 
-// Ported from gopkg.in/yaml.v3 decode.go (MIT/Apache-2.0, Copyright (c) 2011-2019
-// Canonical Ltd): the constants and allowedAliasRatio are copied unchanged.
+// Ported from gopkg.in/yaml.v3 v3.0.1 decode.go (Copyright (c) 2011-2019 Canonical Ltd,
+// Apache License 2.0, http://www.apache.org/licenses/LICENSE-2.0): the constants and
+// allowedAliasRatio are copied unchanged; the decodeCount/aliasCount/aliasDepth
+// accounting in convert and expand is adapted from (*decoder).unmarshal and
+// (*decoder).alias.
 const (
 	// 400,000 decode operations is ~500kb of dense object declarations, or
 	// ~5kb of dense object declarations with 10000% alias expansion
@@ -194,7 +201,7 @@ func (c *converter) expand(alias *yaml.Node) (any, error) {
 	if target == nil {
 		return nil, fmt.Errorf("alias %q has no target", alias.Value)
 	}
-	if !c.inTree[target] {
+	if !c.anchors[target] {
 		return nil, fmt.Errorf("unknown anchor %q referenced", alias.Value)
 	}
 	if c.expanding[target] {

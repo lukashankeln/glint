@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -499,13 +498,15 @@ func TestSplitYAML_SelfReferentialAnchorSkipsDocument(t *testing.T) {
 	}
 }
 
-// billionLaughsData builds a ConfigMap whose data nests levels a..i, each a
-// 10-element list of aliases to the previous level.
+// billionLaughsData builds a ConfigMap whose data nests levels a..e, each a
+// 10-element list of aliases to the previous level: about 10^5 leaves, far past
+// the ~12k decodes at which the guard trips, yet small enough that a guard
+// regression fails an assertion instead of exhausting memory.
 func billionLaughsData() string {
 	var b strings.Builder
 	b.WriteString(mergeDocHeader + "data:\n  a: &a [x, x, x, x, x, x, x, x, x, x]\n")
 	prev := "a"
-	for _, l := range "bcdefghi" {
+	for _, l := range "bcde" {
 		refs := strings.TrimSuffix(strings.Repeat("*"+prev+", ", 10), ", ")
 		fmt.Fprintf(&b, "  %c: &%c [%s]\n", l, l, refs)
 		prev = string(l)
@@ -517,28 +518,29 @@ func TestNodeToValue_BillionLaughsRejected(t *testing.T) {
 	var node yaml.Node
 	require.NoError(t, yaml.Unmarshal([]byte(billionLaughsData()), &node))
 
-	start := time.Now()
 	_, err := nodeToValue(&node)
 	require.ErrorIs(t, err, errExcessiveAliasing)
-	assert.Less(t, time.Since(start), 2*time.Second)
 }
 
 func TestSplitYAML_BillionLaughsSkipsDocument(t *testing.T) {
 	good := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: good\n"
 	data := []byte(billionLaughsData() + "---\n" + good)
 
-	start := time.Now()
 	manifests, err := SplitYAML(data, "app", "file.yaml", false)
 	require.NoError(t, err)
-	assert.Less(t, time.Since(start), 2*time.Second)
 	require.Len(t, manifests, 1)
 	assert.Equal(t, "good", manifests[0].Name)
 }
 
 func TestNodeToValue_ManyModerateAliasesAccepted(t *testing.T) {
+	// Over 1000 decodes and over 100 alias decodes, so the ratio check runs,
+	// but aliases stay well under the 99% allowed ratio.
 	var b strings.Builder
 	b.WriteString(mergeDocHeader + "data:\n  base: &base {a: 1, b: 2, c: 3}\n")
-	for i := 0; i < 50; i++ {
+	for i := 0; i < 3000; i++ {
+		fmt.Fprintf(&b, "  p%d: v%d\n", i, i)
+	}
+	for i := 0; i < 200; i++ {
 		fmt.Fprintf(&b, "  k%d: *base\n", i)
 	}
 	var node yaml.Node
@@ -547,7 +549,22 @@ func TestNodeToValue_ManyModerateAliasesAccepted(t *testing.T) {
 	v, err := nodeToValue(&node)
 	require.NoError(t, err)
 	data := v.(map[string]any)["data"].(map[string]any)
-	assert.Len(t, data, 51)
+	assert.Len(t, data, 3201)
+	assert.Equal(t, map[string]any{"a": float64(1), "b": float64(2), "c": float64(3)}, data["k199"])
+}
+
+func TestNodeToValue_AnchorInsideMergeSequence(t *testing.T) {
+	var node yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte("data:\n  <<: [&x {a: 1}]\n  other: *x\n"), &node))
+
+	v, err := nodeToValue(&node)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{
+		"data": map[string]any{
+			"a":     float64(1),
+			"other": map[string]any{"a": float64(1)},
+		},
+	}, v)
 }
 
 func TestSplitYAML_CrossDocumentAliasSkipsDocument(t *testing.T) {
