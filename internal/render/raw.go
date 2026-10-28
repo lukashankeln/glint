@@ -43,7 +43,7 @@ func (r *RawRenderer) Render(ctx context.Context, app discovery.DiscoveredApp) (
 			return nil, ctx.Err()
 		}
 
-		data, err := os.ReadFile(path)
+		data, err := readFileCapped(path, maxStreamBytes)
 		if err != nil {
 			return nil, fmt.Errorf("reading %q: %w", path, err)
 		}

@@ -109,6 +109,16 @@ render:
   subprocess_fallback: false       # Fall back to helm/kustomize binary on SDK error
 ```
 
+### Limits
+
+These limits are built in and not configurable.
+
+- Each YAML stream (one raw manifest file, or one helm/kustomize render) is limited to 64 MiB and 10,000 documents. Exceeding either is an error for that app.
+- helm/kustomize subprocess stdout is capped at the same 64 MiB; the render fails with a limit error. Subprocess stderr shown in errors is truncated at 64 KiB.
+- YAML anchors/aliases: alias expansion within a stream shares a memory budget of `max(1 MiB, 10 × the stream size)`, capped at 64 MiB. A document whose aliases exceed it, or that trips the excessive-aliasing heuristic, is skipped (logged at debug level) rather than failing the app.
+
+Caveats: limits apply per stream, not per app or per run. They bound memory, but plain YAML can still use tens of times its size in memory. Memory used inside the in-process helm/kustomize libraries is not capped.
+
 ---
 
 ## `rules`
