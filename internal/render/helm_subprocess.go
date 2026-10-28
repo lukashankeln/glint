@@ -1,10 +1,8 @@
 package render
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"os/exec"
 
 	"github.com/lukashankeln/glint/internal/discovery"
 	"github.com/lukashankeln/glint/internal/manifest"
@@ -45,12 +43,21 @@ func renderHelmSubprocess(ctx context.Context, app discovery.DiscoveredApp, apiV
 		args = append(args, "--set", k+"="+v)
 	}
 
-	cmd := exec.CommandContext(ctx, "helm", args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	cmd := execCommandContext(ctx, "helm", args...)
+	stdout := &cappedBuffer{limit: maxStreamBytes}
+	stderr := &truncatingWriter{}
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 
-	if err := cmd.Run(); err != nil {
+	runErr := cmd.Run()
+	// Check the cap first, whatever Run returned: on a writer error os/exec
+	// closes the pipe, the child dies of SIGPIPE and Run reports "signal:
+	// broken pipe"; Wait only returns the copy error when the child exited 0.
+	if stdout.exceeded {
+		return nil, fmt.Errorf("helm template output for %q exceeds the %d-byte limit: %w",
+			app.Name, stdout.limit, errOutputLimit)
+	}
+	if err := runErr; err != nil {
 		return nil, fmt.Errorf("helm template subprocess failed for %q: %w\nstderr: %s",
 			app.Name, err, stderr.String())
 	}

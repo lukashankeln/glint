@@ -2,6 +2,7 @@ package render
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -212,4 +213,19 @@ func TestNormalizeRepoURL(t *testing.T) {
 			assert.Equal(t, tt.want, normalizeRepoURL(tt.input))
 		})
 	}
+}
+
+// Lowers the package-level stream cap, so it must stay serial.
+func TestRawRenderer_OversizedFile(t *testing.T) {
+	root := t.TempDir()
+	content := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: big\n"
+	require.NoError(t, os.WriteFile(filepath.Join(root, "big.yaml"), []byte(content), 0o644))
+	old := maxStreamBytes
+	maxStreamBytes = len(content) - 1
+	t.Cleanup(func() { maxStreamBytes = old })
+
+	app := discovery.DiscoveredApp{Name: "raw", Renderer: discovery.RendererRaw, RootPath: root}
+	_, err := New(app, defaultCfg()).Render(context.Background(), app)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, errStreamTooLarge))
 }

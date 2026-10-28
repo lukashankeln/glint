@@ -14,19 +14,37 @@ import (
 	"github.com/lukashankeln/glint/internal/manifest"
 )
 
+// Stream limits. They are variables so tests can lower them; such tests must
+// not run in parallel.
+var (
+	maxStreamBytes     = 64 << 20
+	maxStreamDocuments = 10000
+
+	errStreamTooLarge   = errors.New("YAML stream too large")
+	errTooManyDocuments = errors.New("YAML stream has too many documents")
+)
+
 // SplitYAML splits a multi-document YAML stream into individual Manifest objects.
 // Documents without apiVersion/kind are skipped with a debug log.
 // Empty documents and comment-only docs are skipped silently.
-// A document that fails to decode returns an error. A document that decodes but
+// A stream over maxStreamBytes, or with more than maxStreamDocuments
+// documents (empty ones included), returns an error wrapping errStreamTooLarge
+// or errTooManyDocuments. A document that fails to decode returns an error. A document that decodes but
 // fails conversion (e.g. alias limits, invalid map keys, self-referential or
 // unknown anchors) is skipped with a debug log.
 func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([]manifest.Manifest, error) {
+	if len(data) > maxStreamBytes {
+		return nil, fmt.Errorf("YAML stream is %d bytes, over the %d-byte limit: %w",
+			len(data), maxStreamBytes, errStreamTooLarge)
+	}
+
 	var manifests []manifest.Manifest
 
 	// One alias byte budget for the whole stream: see nodeToValue.
 	budget := aliasByteBudget(len(data))
 
 	dec := yaml.NewDecoder(bytes.NewReader(data))
+	docCount := 0
 	for {
 		var node yaml.Node
 		if err := dec.Decode(&node); err != nil {
@@ -34,6 +52,11 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 				break
 			}
 			return nil, fmt.Errorf("decoding YAML document: %w", err)
+		}
+		docCount++
+		if docCount > maxStreamDocuments {
+			return nil, fmt.Errorf("YAML stream has more than %d documents: %w",
+				maxStreamDocuments, errTooManyDocuments)
 		}
 		if node.Kind == 0 {
 			continue // empty doc
@@ -127,11 +150,12 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 // exhausting CPU and memory; its counters are per call, i.e. per document. A
 // byte budget catches what the ratio misses: a large scalar aliased many times,
 // or a small mapping aliased many times. Every scalar converted through an
-// alias is charged len(Value) plus aliasedScalarCost, every aliased mapping aliasedMapCost plus aliasedEntryCost
-// per pair, every aliased sequence aliasedSeqCost plus aliasedElemCost per
-// element, and every entry a merge copies from an alias or inside aliased
-// content aliasedMergeEntryCost; aliased typed scalars and non-string keys add
-// aliasedDecodeCost and aliasedKeyFormatCost.
+// alias is charged len(Value) plus aliasedScalarCost, every aliased mapping
+// aliasedMapCost plus aliasedEntryCost per pair, every aliased sequence
+// aliasedSeqCost plus aliasedElemCost per element, and every entry a merge
+// copies from an alias or inside aliased content aliasedMergeEntryCost;
+// aliased typed scalars add aliasedDecodeCost plus 2*len(n.Value), and
+// non-string keys add aliasedKeyFormatCost.
 // These are shaped like the heap the conversion allocates, so the budget bounds
 // memory and not just output size. On top of that comes 2 bytes per level of
 // nesting (aliasedIndentCost, the indentation the output writes on each line;
@@ -239,7 +263,7 @@ const (
 	// worst of the three; the constant keeps a margin). The resolver also
 	// copies the input in failed strconv attempts, so 2*len(Value) more is
 	// charged per decoded scalar (len(Value) itself is already charged once
-	// as a scalar), which makes the total cover about twice the length.
+	// as a scalar); that extra 2*len covers the decode allocation (~2*len).
 	aliasedDecodeCost = 320
 	// aliasedKeyFormatCost is charged per aliased mapping key that is not a
 	// string and so is formatted with fmt.Sprint.
