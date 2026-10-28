@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 	sigsyaml "sigs.k8s.io/yaml"
 )
 
@@ -338,6 +339,20 @@ func TestSplitYAML_MergeKeysMatchSigsYAML(t *testing.T) {
     - name: two
       <<: *a
 `},
+		{"inline sequence of inline maps", `
+  m:
+    <<: [{x: 1}, {x: 2, z: 2}]
+`},
+		{"explicit merge tag merges", `
+  a: &a {x: 1, yy: 2}
+  m:
+    !!merge <<: *a
+    z: 3
+`},
+		{"str tag on merge key is literal", `
+  m:
+    !!str <<: {x: 1}
+`},
 		{"shallow nested override", `
   a: &a
     nest: {p: 1, q: 2}
@@ -398,6 +413,34 @@ metadata:
 	assert.Equal(t, "cm1", manifests[0].Name)
 }
 
+func TestNodeToValue_Errors(t *testing.T) {
+	cases := []struct {
+		name    string
+		doc     string
+		wantErr string
+		isMerge bool
+	}{
+		{"sequence contains itself", "m: &a [*a]\n", "value contains itself", false},
+		{"mapping merges itself", "m: &a {k: 1, <<: *a}\n", "value contains itself", false},
+		{"scalar merge", "m: {<<: 5}\n", "", true},
+		{"null merge", "m: {<<: null}\n", "", true},
+		{"alias to sequence", "s: &s [1, 2]\nm: {<<: *s}\n", "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var n yaml.Node
+			require.NoError(t, yaml.Unmarshal([]byte(tc.doc), &n))
+			_, err := nodeToValue(&n)
+			require.Error(t, err)
+			if tc.isMerge {
+				require.ErrorIs(t, err, errMergeValue)
+			} else {
+				require.ErrorContains(t, err, tc.wantErr)
+			}
+		})
+	}
+}
+
 func TestSplitYAML_InvalidMergeValueSkipsDocument(t *testing.T) {
 	cases := []struct {
 		name string
@@ -411,6 +454,7 @@ func TestSplitYAML_InvalidMergeValueSkipsDocument(t *testing.T) {
 		{"sequence of alias to sequence", "  s: &s [1, 2]\n  m:\n    <<: [*s]\n"},
 	}
 	good := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: good\n"
+	good2 := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: good2\n"
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			bad := mergeDocHeader + "data:\n" + tc.body
@@ -418,7 +462,7 @@ func TestSplitYAML_InvalidMergeValueSkipsDocument(t *testing.T) {
 			var tmp map[string]any
 			assert.Error(t, sigsyaml.Unmarshal([]byte(bad), &tmp))
 
-			data := []byte(good + "---\n" + bad + "---\n" + good[:len(good)-5] + "good2\n")
+			data := []byte(good + "---\n" + bad + "---\n" + good2)
 			manifests, err := SplitYAML(data, "app", "file.yaml", false)
 			require.NoError(t, err)
 			require.Len(t, manifests, 2)
