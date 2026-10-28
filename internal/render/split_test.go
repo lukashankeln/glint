@@ -628,3 +628,63 @@ func TestSplitYAML_ComplexKeySkipsDocument(t *testing.T) {
 		})
 	}
 }
+
+// oldPipelineObject reproduces SplitYAML's object decoding from before
+// nodeToValue: yaml.v3 re-encode of the parsed node, then sigs.k8s.io/yaml.
+func oldPipelineObject(t *testing.T, data []byte) map[string]any {
+	t.Helper()
+	var node yaml.Node
+	require.NoError(t, yaml.Unmarshal(data, &node))
+	docBytes, err := yaml.Marshal(&node)
+	require.NoError(t, err)
+	var obj map[string]any
+	require.NoError(t, sigsyaml.Unmarshal(docBytes, &obj))
+	return obj
+}
+
+func TestSplitYAML_YAML11BoolsMatchOldPipeline(t *testing.T) {
+	literals := []string{
+		"y", "Y", "yes", "Yes", "YES", "on", "On", "ON", "true", "True", "TRUE",
+		"n", "N", "no", "No", "NO", "off", "Off", "OFF", "false", "False", "FALSE",
+	}
+	var cases []string
+	for _, l := range literals {
+		cases = append(cases,
+			"  v: "+l+"\n",
+			"  "+l+": 1\n",
+			"  dq: \""+l+"\"\n",
+			"  sq: '"+l+"'\n",
+			"  t: !!str "+l+"\n",
+			"  \""+l+"\": 1\n",
+		)
+	}
+	cases = append(cases,
+		"  lit: |\n    yes\n",
+		"  fold: >\n    no\n",
+		"  mixed: yEs\n  oN: 1\n",
+		"  seq: [y, n, on, off, \"yes\"]\n",
+		"  bang: ! yes\n",
+		"  tb: !!bool yes\n",
+		"  tbq: !!bool \"off\"\n",
+	)
+	for _, c := range cases {
+		t.Run(c, func(t *testing.T) {
+			data := []byte(mergeDocHeader + "data:\n" + c)
+			want := oldPipelineObject(t, data)
+
+			manifests, err := SplitYAML(data, "app", "file.yaml", false)
+			require.NoError(t, err)
+			require.Len(t, manifests, 1)
+			assert.Equal(t, want, manifests[0].Object)
+		})
+	}
+}
+
+func TestSplitYAML_YAML11BoolIssueExample(t *testing.T) {
+	data := []byte(mergeDocHeader + "data:\n  y: 1\n  \"y\": 2\n  on: off\n  q: \"yes\"\n")
+	manifests, err := SplitYAML(data, "app", "file.yaml", false)
+	require.NoError(t, err)
+	require.Len(t, manifests, 1)
+	d := manifests[0].Object["data"].(map[string]any)
+	assert.Equal(t, map[string]any{"true": false, "y": float64(2), "q": "yes"}, d)
+}
