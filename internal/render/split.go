@@ -126,8 +126,8 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 // makes a "billion laughs" document fail with errExcessiveAliasing instead of
 // exhausting CPU and memory; its counters are per call, i.e. per document. A
 // byte budget catches what the ratio misses: a large scalar aliased many times,
-// or a small mapping aliased many times. Every scalar converted through an alias is charged len(Value) plus
-// aliasedScalarCost, every aliased mapping aliasedMapCost plus aliasedEntryCost
+// or a small mapping aliased many times. Every scalar converted through an
+// alias is charged len(Value) plus aliasedScalarCost, every aliased mapping aliasedMapCost plus aliasedEntryCost
 // per pair, every aliased sequence aliasedSeqCost plus aliasedElemCost per
 // element, and every entry a merge copies from an alias or inside aliased
 // content aliasedMergeEntryCost; aliased typed scalars and non-string keys add
@@ -233,9 +233,13 @@ const (
 	// holding it is charged by the parent (aliasedElemCost, aliasedEntryCost).
 	aliasedScalarCost = 48
 	// aliasedDecodeCost is charged on top of that for an aliased scalar that
-	// goes through yaml.v3's Node.Decode (!!int, !!float, and !!bool other than
-	// the YAML 1.1 spellings), which allocates a decoder per call (~130 to
-	// ~240 bytes beyond the boxed value, the float being the worst; the constant keeps a margin).
+	// goes through yaml.v3's Node.Decode (!!int, !!float, and !!bool other
+	// than the YAML 1.1 spellings), which allocates a decoder per call
+	// (measured: ~279 bytes beyond the boxed value for the float 1.5, the
+	// worst of the three; the constant keeps a margin). The resolver also
+	// copies the input in failed strconv attempts, so 2*len(Value) more is
+	// charged per decoded scalar (len(Value) itself is already charged once
+	// as a scalar), which makes the total cover about twice the length.
 	aliasedDecodeCost = 320
 	// aliasedKeyFormatCost is charged per aliased mapping key that is not a
 	// string and so is formatted with fmt.Sprint.
@@ -481,7 +485,7 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 				return b, nil // e.g. `!!bool yes`, which yaml.v3 fails to decode
 			}
 			if c.aliasDepth > 0 {
-				if err := c.charge(aliasedDecodeCost); err != nil {
+				if err := c.charge(aliasedDecodeCost + 2*len(n.Value)); err != nil {
 					return nil, err
 				}
 			}
@@ -492,7 +496,7 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 			return b, nil
 		case "!!int", "!!float":
 			if c.aliasDepth > 0 {
-				if err := c.charge(aliasedDecodeCost); err != nil {
+				if err := c.charge(aliasedDecodeCost + 2*len(n.Value)); err != nil {
 					return nil, err
 				}
 			}

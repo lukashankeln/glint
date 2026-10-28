@@ -912,6 +912,10 @@ func TestAliasCharges_CoverHeapAllocation(t *testing.T) {
 		tc{"int", "&a 12345", "*a"},
 		tc{"float", "&a 1.5", "*a"},
 		tc{"bool", "&a true", "*a"},
+		tc{"float-long", "&a 1." + strings.Repeat("0", 1000), "*a"},
+		tc{"float-tagged-long", "&a !!float " + strings.Repeat("1", 300), "*a"},
+		tc{"map-float-key-long", "&a {1." + strings.Repeat("0", 1000) + ": v}", "*a"},
+		tc{"map-int-key-long", "&a {" + strings.Repeat("9", 300) + ": v}", "*a"},
 		tc{"tagged-bool", "&a !!bool yes", "*a"},
 		tc{"map-int-values-1", typed(1, false), "*a"},
 		tc{"map-int-values-8", typed(8, false), "*a"},
@@ -939,17 +943,21 @@ func TestAliasCharges_CoverHeapAllocation(t *testing.T) {
 				return parseNode(t, "["+strings.Repeat("0, ", 3000)+c.anchor+strings.Repeat(", "+c.use, uses)+"]")
 			}
 			// TotalAlloc is process-wide, so stray allocations only ever add
-			// to a measurement: the minimum over several repeats is the
-			// closest to the conversion's own allocation.
-			alloc, charged := ^uint64(0), 0
+			// to a measurement: the minimum over several repeats, taken
+			// separately for the small and the large document, is the closest
+			// to each one's own allocation. The difference of those minima
+			// is then the per-use cost; a minimum over per-repeat differences
+			// could instead hide an undercharge.
+			minS, minL, charged := ^uint64(0), ^uint64(0), 0
 			for range 5 {
 				allocS, chargedS := measure(doc(n))
 				allocL, chargedL := measure(doc(2 * n))
-				if allocL < allocS {
-					continue
-				}
-				alloc = min(alloc, (allocL-allocS)/n)
+				minS, minL = min(minS, allocS), min(minL, allocL)
 				charged = (chargedL - chargedS) / n
+			}
+			var alloc uint64
+			if minL > minS {
+				alloc = (minL - minS) / n
 			}
 			t.Logf("per alias: allocated %d, charged %d", alloc, charged)
 			assert.LessOrEqual(t, alloc, uint64(charged))
