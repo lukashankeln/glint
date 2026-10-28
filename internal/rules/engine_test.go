@@ -55,6 +55,29 @@ func TestEngine_BadCELExpression(t *testing.T) {
 	assert.Error(t, err, "expected compile error for invalid CEL")
 }
 
+func TestEngine_MessageTemplate_Severity(t *testing.T) {
+	cfg := config.RulesConfig{
+		Custom: []config.CustomRuleDef{
+			{
+				ID:         "sev-rule",
+				Severity:   "warning",
+				Expression: "false",
+				Message:    "{{ .severity }}: {{ .kind }}/{{ .name }}",
+			},
+		},
+	}
+	cfg.BuiltIn.NoLatestTag.Enabled = false
+	cfg.BuiltIn.DeprecatedAPIs.Enabled = false
+
+	engine, err := NewEngine(cfg)
+	require.NoError(t, err)
+
+	m := makeManifest("apps/v1", "Deployment", "my-app", "default", map[string]any{})
+	violations := engine.Evaluate([]manifest.Manifest{m})
+	require.Len(t, violations, 1)
+	assert.Equal(t, "warning: Deployment/my-app", violations[0].Message)
+}
+
 func TestEngine_NoLatestTag_Violation(t *testing.T) {
 	cfg := defaultRulesCfg()
 	cfg.BuiltIn.DeprecatedAPIs.Enabled = false

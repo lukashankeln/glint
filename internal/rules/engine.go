@@ -206,7 +206,7 @@ func (e *Engine) evaluateManifest(m manifest.Manifest) []Violation {
 			continue // rule passes, no violation
 		}
 
-		msg := renderMessage(rule.msgTmpl, rule.Def.Message, m)
+		msg := renderMessage(rule.msgTmpl, rule.Def.Message, rule.Def.Severity, m)
 		violations = append(violations, Violation{
 			RuleID:       rule.Def.ID,
 			Severity:     rule.Def.Severity,
@@ -223,9 +223,10 @@ func (e *Engine) evaluateManifest(m manifest.Manifest) []Violation {
 	return violations
 }
 
-// renderMessage executes the pre-compiled message template with manifest fields.
+// renderMessage executes the pre-compiled message template with manifest fields
+// and the rule severity.
 // Falls back to the raw message string on execution errors.
-func renderMessage(tmpl *template.Template, fallback string, m manifest.Manifest) string {
+func renderMessage(tmpl *template.Template, fallback string, severity Severity, m manifest.Manifest) string {
 	if tmpl == nil {
 		return fallback
 	}
@@ -235,6 +236,7 @@ func renderMessage(tmpl *template.Template, fallback string, m manifest.Manifest
 		"name":       m.Name,
 		"namespace":  m.Namespace,
 		"apiVersion": m.APIVersion,
+		"severity":   string(severity),
 	}); err != nil {
 		return fallback
 	}
