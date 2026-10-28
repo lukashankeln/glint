@@ -18,8 +18,8 @@ import (
 // Documents without apiVersion/kind are skipped with a debug log.
 // Empty documents and comment-only docs are skipped silently.
 // A document that fails to decode returns an error. A document that decodes but
-// fails conversion (alias limits, invalid map keys, self-referential or unknown
-// anchors) is skipped with a debug log.
+// fails conversion (e.g. alias limits, invalid map keys, self-referential or
+// unknown anchors) is skipped with a debug log.
 func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([]manifest.Manifest, error) {
 	var manifests []manifest.Manifest
 
@@ -50,8 +50,12 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 		// library: nodeToValue walks the tree once in memory, avoiding the
 		// yaml.v2-decode + json.Marshal + json.Unmarshal chain that
 		// sigs.k8s.io/yaml performs internally on every document.
+		// Only accepted documents consume the shared alias budget: a rejected
+		// document's charges are refunded.
+		budgetBefore := budget
 		val, err := nodeToValueBudget(&node, &budget)
 		if err != nil {
+			budget = budgetBefore
 			slog.Debug("skipping document", "app", appName, "err", err)
 			continue
 		}
@@ -123,11 +127,14 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 // exhausting CPU and memory; its counters are per call, i.e. per document. A
 // byte budget catches what the ratio misses, a large scalar aliased many times:
 // every scalar converted through an alias is charged len(Value)+1 bytes and
-// every aliased mapping or sequence a constant 2, and exceeding the budget
+// every aliased mapping or sequence a constant 2, plus 2 bytes per level of
+// nesting (aliasedIndentCost, the indentation the output writes on each line;
+// an aliased target's depth adds to the alias site's), and exceeding the budget
 // fails with errExcessiveAliasExpansion. Here the budget is the floor
 // (aliasedBytesFloor); SplitYAML shares one budget, aliasByteBudget(len(data)),
-// across all documents of a stream, so the result depends on order: a later
-// document can be the one that is skipped.
+// across the documents of a stream, so the result depends on order: a later
+// document can be the one that is skipped. A rejected document's charges are
+// refunded, so only accepted documents consume the shared budget.
 //
 // An alias whose anchor is defined outside the given tree (yaml.v3 keeps
 // anchors across Decode calls on one stream) is an "unknown anchor" error, as
@@ -174,6 +181,7 @@ type converter struct {
 	decodeCount int
 	aliasCount  int
 	aliasDepth  int
+	depth       int // current mapping/sequence nesting, continuing across aliases
 
 	aliasBytesLeft *int
 }
@@ -202,6 +210,8 @@ const (
 	aliasedBytesPerInputByte = 10
 	// aliasedNodeCost is charged for each aliased mapping or sequence node.
 	aliasedNodeCost = 2
+	// aliasedIndentCost is charged per level of nesting of an aliased node.
+	aliasedIndentCost = 2
 )
 
 // aliasByteBudget returns the alias byte budget for an input of inputLen bytes.
@@ -354,11 +364,13 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 
 	case yaml.MappingNode:
 		if c.aliasDepth > 0 {
-			if err := c.charge(aliasedNodeCost); err != nil {
+			if err := c.charge(aliasedNodeCost + aliasedIndentCost*c.depth); err != nil {
 				return nil, err
 			}
 		}
 		m := make(map[string]any, len(n.Content)/2)
+		c.depth++
+		defer func() { c.depth-- }()
 		for i := 0; i+1 < len(n.Content); i += 2 {
 			if isMergeKey(n.Content[i]) {
 				if err := c.merge(m, n.Content[i+1]); err != nil {
@@ -388,11 +400,13 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 
 	case yaml.SequenceNode:
 		if c.aliasDepth > 0 {
-			if err := c.charge(aliasedNodeCost); err != nil {
+			if err := c.charge(aliasedNodeCost + aliasedIndentCost*c.depth); err != nil {
 				return nil, err
 			}
 		}
 		s := make([]any, len(n.Content))
+		c.depth++
+		defer func() { c.depth-- }()
 		for i, e := range n.Content {
 			v, err := c.convert(e)
 			if err != nil {
@@ -404,7 +418,7 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 
 	case yaml.ScalarNode:
 		if c.aliasDepth > 0 {
-			if err := c.charge(len(n.Value) + 1); err != nil {
+			if err := c.charge(len(n.Value) + 1 + aliasedIndentCost*c.depth); err != nil {
 				return nil, err
 			}
 		}
