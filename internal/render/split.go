@@ -125,20 +125,22 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 // Alias expansion is bounded two ways. yaml.v3's excessive-aliasing heuristic
 // makes a "billion laughs" document fail with errExcessiveAliasing instead of
 // exhausting CPU and memory; its counters are per call, i.e. per document. A
-// byte budget catches what the ratio misses, a large scalar aliased many times:
-// every scalar converted through an alias is charged len(Value) plus
+// byte budget catches what the ratio misses: a large scalar aliased many times,
+// or a small mapping aliased many times. Every scalar converted through an alias is charged len(Value) plus
 // aliasedScalarCost, every aliased mapping aliasedMapCost plus aliasedEntryCost
 // per pair, every aliased sequence aliasedSeqCost plus aliasedElemCost per
-// element, and every entry a merge copies from an alias aliasedMergeEntryCost.
+// element, and every entry a merge copies from an alias or inside aliased
+// content aliasedMergeEntryCost; aliased typed scalars and non-string keys add
+// aliasedDecodeCost and aliasedKeyFormatCost.
 // These are shaped like the heap the conversion allocates, so the budget bounds
 // memory and not just output size. On top of that comes 2 bytes per level of
 // nesting (aliasedIndentCost, the indentation the output writes on each line;
 // an aliased target's depth adds to the alias site's), and exceeding the budget
 // fails with errExcessiveAliasExpansion. Here the budget is the floor
 // (aliasedBytesFloor); SplitYAML shares one budget, aliasByteBudget(len(data)),
-// that scales with the input up to aliasedBytesCeiling across the documents of
-// a stream, so the result depends on order: a later
-// document can be the one that is skipped. A rejected document's charges are
+// that scales with the input up to aliasedBytesCeiling and is shared across the
+// documents of a stream, so the result depends on order: a later document can
+// be the one that is skipped. A rejected document's charges are
 // refunded, so only accepted documents consume the shared budget.
 //
 // An alias whose anchor is defined outside the given tree (yaml.v3 keeps
@@ -227,8 +229,17 @@ const (
 	// 16-byte interface slot.
 	aliasedElemCost = 16
 	// aliasedScalarCost is charged per aliased scalar on top of len(Value): the
-	// boxed value and its interface slot (~35 bytes), rounded up.
+	// boxed value (~16 bytes for a string), rounded up. The interface slot
+	// holding it is charged by the parent (aliasedElemCost, aliasedEntryCost).
 	aliasedScalarCost = 48
+	// aliasedDecodeCost is charged on top of that for an aliased scalar that
+	// goes through yaml.v3's Node.Decode (!!int, !!float, and !!bool other than
+	// the YAML 1.1 spellings), which allocates a decoder per call (~130 to
+	// ~240 bytes beyond the boxed value, the float being the worst; the constant keeps a margin).
+	aliasedDecodeCost = 320
+	// aliasedKeyFormatCost is charged per aliased mapping key that is not a
+	// string and so is formatted with fmt.Sprint.
+	aliasedKeyFormatCost = 64
 	// aliasedMergeEntryCost is charged per entry a merge copies out of an
 	// aliased mapping (or into aliased content): the outer mapping is not
 	// charged itself and grows past its presize, which costs up to ~180 bytes
@@ -423,6 +434,11 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 			}
 			ks, ok := k.(string)
 			if !ok {
+				if c.aliasDepth > 0 {
+					if err := c.charge(aliasedKeyFormatCost); err != nil {
+						return nil, err
+					}
+				}
 				ks = fmt.Sprint(k)
 			}
 			v, err := c.convert(n.Content[i+1])
@@ -464,12 +480,22 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 			if b, ok := yaml11Bools[n.Value]; ok {
 				return b, nil // e.g. `!!bool yes`, which yaml.v3 fails to decode
 			}
+			if c.aliasDepth > 0 {
+				if err := c.charge(aliasedDecodeCost); err != nil {
+					return nil, err
+				}
+			}
 			var b bool
 			if err := n.Decode(&b); err != nil {
 				return nil, err
 			}
 			return b, nil
 		case "!!int", "!!float":
+			if c.aliasDepth > 0 {
+				if err := c.charge(aliasedDecodeCost); err != nil {
+					return nil, err
+				}
+			}
 			var f float64
 			if err := n.Decode(&f); err != nil {
 				return nil, err

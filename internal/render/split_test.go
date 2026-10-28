@@ -834,18 +834,25 @@ func TestSplitYAML_RejectedDocumentRefundsBudget(t *testing.T) {
 }
 
 func TestSplitYAML_ManySmallAliasedMapsRejected(t *testing.T) {
-	// Each document aliases a one-pair map 4000 times: ~12 KB of input that
-	// retains ~1.5 MB of heap. The heap-shaped charges must not accept the
-	// whole stream.
+	// Each document aliases a one-pair map `uses` times: about 1 KiB of input
+	// that costs a fraction of the budget, so one document fits alone but the
+	// ten together do not. The heap-shaped charges must not accept the stream.
+	const uses = 300
 	var doc strings.Builder
 	doc.WriteString("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\ndata:\n  m: &a {k0: v}\n  l: [")
-	doc.WriteString(strings.TrimSuffix(strings.Repeat("*a, ", 4000), ", "))
+	doc.WriteString(strings.TrimSuffix(strings.Repeat("*a, ", uses), ", "))
 	doc.WriteString("]\n")
-	data := []byte(strings.Repeat("---\n"+doc.String(), 10))
+	const docs = 10
+	data := []byte(strings.Repeat("---\n"+doc.String(), docs))
+	one := uses * (aliasedMapCost + aliasedEntryCost + 2*(len("k0")+aliasedScalarCost))
+	budget := aliasByteBudget(len(data))
+	require.Less(t, one, budget, "fixture: one document must fit")
+	require.Greater(t, docs*one, budget, "fixture: all documents must not fit")
 
 	manifests, err := SplitYAML(data, "app", "file.yaml", false)
 	require.NoError(t, err)
-	assert.Less(t, len(manifests), 10)
+	assert.Less(t, len(manifests), docs)
+	assert.NotEmpty(t, manifests)
 }
 
 func TestAliasByteBudget_FloorAndCeiling(t *testing.T) {
@@ -890,7 +897,26 @@ func TestAliasCharges_CoverHeapAllocation(t *testing.T) {
 			tc{fmt.Sprintf("merge-seq-%d", k), "&a {" + pairs(k) + "}", "{<<: [*a, *a]}"},
 		)
 	}
+	typed := func(k int, key bool) string {
+		p := make([]string, k)
+		for i := range p {
+			if key {
+				p[i] = fmt.Sprintf("%d: v", i+1000)
+			} else {
+				p[i] = fmt.Sprintf("k%d: %d", i, i+1000)
+			}
+		}
+		return "&a {" + strings.Join(p, ", ") + "}"
+	}
 	cases = append(cases,
+		tc{"int", "&a 12345", "*a"},
+		tc{"float", "&a 1.5", "*a"},
+		tc{"bool", "&a true", "*a"},
+		tc{"tagged-bool", "&a !!bool yes", "*a"},
+		tc{"map-int-values-1", typed(1, false), "*a"},
+		tc{"map-int-values-8", typed(8, false), "*a"},
+		tc{"map-int-keys-1", typed(1, true), "*a"},
+		tc{"map-int-keys-8", typed(8, true), "*a"},
 		tc{"scalar-empty", "&a \"\"", "*a"},
 		tc{"scalar-5", "&a hello", "*a"},
 		tc{"scalar-100", "&a " + strings.Repeat("x", 100), "*a"},
@@ -912,11 +938,19 @@ func TestAliasCharges_CoverHeapAllocation(t *testing.T) {
 			doc := func(uses int) *yaml.Node {
 				return parseNode(t, "["+strings.Repeat("0, ", 3000)+c.anchor+strings.Repeat(", "+c.use, uses)+"]")
 			}
-			small, large := doc(n), doc(2*n)
-			allocS, chargedS := measure(small)
-			allocL, chargedL := measure(large)
-			alloc := (allocL - allocS) / n
-			charged := (chargedL - chargedS) / n
+			// TotalAlloc is process-wide, so stray allocations only ever add
+			// to a measurement: the minimum over several repeats is the
+			// closest to the conversion's own allocation.
+			alloc, charged := ^uint64(0), 0
+			for range 5 {
+				allocS, chargedS := measure(doc(n))
+				allocL, chargedL := measure(doc(2 * n))
+				if allocL < allocS {
+					continue
+				}
+				alloc = min(alloc, (allocL-allocS)/n)
+				charged = (chargedL - chargedS) / n
+			}
 			t.Logf("per alias: allocated %d, charged %d", alloc, charged)
 			assert.LessOrEqual(t, alloc, uint64(charged))
 		})
