@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -258,6 +259,22 @@ func (c *Config) Validate() error {
 	for _, b := range builtIns {
 		if b.sev != "" && !ValidSeverity(b.sev) {
 			return fmt.Errorf("rules.built_in.%s: unknown severity %q (must be error, warning, or info)", b.name, b.sev)
+		}
+	}
+
+	for _, t := range []struct{ name, val string }{
+		{"render.helm.timeout", c.Render.Helm.Timeout},
+		{"render.kustomize.timeout", c.Render.Kustomize.Timeout},
+	} {
+		if t.val == "" {
+			continue
+		}
+		d, err := time.ParseDuration(t.val)
+		if err != nil {
+			return fmt.Errorf("%s: invalid duration %q", t.name, t.val)
+		}
+		if d <= 0 {
+			return fmt.Errorf("%s: must be positive, got %q", t.name, t.val)
 		}
 	}
 

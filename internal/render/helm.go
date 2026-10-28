@@ -32,24 +32,41 @@ import (
 // HelmRenderer renders Helm charts using the Helm SDK.
 type HelmRenderer struct {
 	cfg *config.Config
+	// sdk is the in-process render; a field so tests can substitute a blocking one.
+	sdk func(context.Context, discovery.DiscoveredApp) ([]manifest.Manifest, error)
 }
 
 // newHelmRenderer creates a HelmRenderer.
 func newHelmRenderer(cfg *config.Config) *HelmRenderer {
-	return &HelmRenderer{cfg: cfg}
+	r := &HelmRenderer{cfg: cfg}
+	r.sdk = r.renderSDK
+	return r
 }
 
 // Render renders the given app with Helm and returns manifests.
 func (r *HelmRenderer) Render(ctx context.Context, app discovery.DiscoveredApp) ([]manifest.Manifest, error) {
-	if ctx.Err() != nil {
-		return nil, ctx.Err()
+	tctx, cancel, d, err := withRenderTimeout(ctx, r.cfg.Render.Helm.Timeout)
+	if err != nil {
+		return nil, fmt.Errorf("render.helm.timeout: %w", err)
+	}
+	defer cancel()
+
+	if tctx.Err() != nil {
+		return nil, wrapRenderTimeout(ctx, tctx, "helm", app.Name, d, tctx.Err())
 	}
 
+	var manifests []manifest.Manifest
 	if r.cfg.Render.SubprocessFallback {
-		return renderHelmSubprocess(ctx, app, r.cfg.Render.Helm.APIVersions)
+		manifests, err = renderHelmSubprocess(tctx, app, r.cfg.Render.Helm.APIVersions)
+	} else {
+		manifests, err = runWithContext(tctx, func() ([]manifest.Manifest, error) {
+			return r.sdk(tctx, app)
+		})
 	}
-
-	return r.renderSDK(ctx, app)
+	if err != nil {
+		return nil, wrapRenderTimeout(ctx, tctx, "helm", app.Name, d, err)
+	}
+	return manifests, nil
 }
 
 func (r *HelmRenderer) renderSDK(ctx context.Context, app discovery.DiscoveredApp) ([]manifest.Manifest, error) {

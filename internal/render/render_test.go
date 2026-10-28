@@ -7,12 +7,14 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/lukashankeln/glint/internal/config"
 	"github.com/lukashankeln/glint/internal/discovery"
+	"github.com/lukashankeln/glint/internal/manifest"
 )
 
 func testdataPath(name string) string {
@@ -97,6 +99,38 @@ func TestKustomizeRenderer_Base(t *testing.T) {
 	manifests, err := renderer.Render(context.Background(), app)
 	require.NoError(t, err)
 	assert.NotEmpty(t, manifests, "expected at least one manifest from the kustomize base")
+}
+
+func TestHelmRenderer_Timeout(t *testing.T) {
+	app := discovery.DiscoveredApp{
+		Name:        "frontend",
+		Framework:   discovery.FrameworkPlain,
+		Renderer:    discovery.RendererHelm,
+		RootPath:    testdataPath("argocd-helm-app/charts/frontend"),
+		ReleaseName: "frontend",
+		Namespace:   "default",
+	}
+	cfg := defaultCfg()
+	cfg.Render.Helm.Timeout = "1ns"
+	_, err := New(app, cfg).Render(context.Background(), app)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Contains(t, err.Error(), "timed out")
+}
+
+func TestKustomizeRenderer_Timeout(t *testing.T) {
+	app := discovery.DiscoveredApp{
+		Name:      "base",
+		Framework: discovery.FrameworkPlain,
+		Renderer:  discovery.RendererKustomize,
+		RootPath:  testdataPath("kustomize-overlay/base"),
+	}
+	cfg := defaultCfg()
+	cfg.Render.Kustomize.Timeout = "1ns"
+	_, err := New(app, cfg).Render(context.Background(), app)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Contains(t, err.Error(), "timed out")
 }
 
 func TestRawRenderer_RawYAML(t *testing.T) {
@@ -231,4 +265,50 @@ func TestRawRenderer_OversizedFile(t *testing.T) {
 	// The capped read in raw.go rejects the file, before SplitYAML sees it.
 	assert.Contains(t, err.Error(), "reading ")
 	assert.Contains(t, err.Error(), "file is ")
+}
+
+// assertRenderTimesOut runs render with an SDK stand-in that ignores its
+// context and blocks, so only runWithContext can return control.
+func assertRenderTimesOut(t *testing.T, render func(block func(context.Context, discovery.DiscoveredApp) ([]manifest.Manifest, error)) error) {
+	t.Helper()
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	block := func(context.Context, discovery.DiscoveredApp) ([]manifest.Manifest, error) {
+		<-release
+		return nil, nil
+	}
+	done := make(chan error, 1)
+	go func() { done <- render(block) }()
+	select {
+	case err := <-done:
+		require.Error(t, err)
+		assert.ErrorIs(t, err, context.DeadlineExceeded)
+		assert.Contains(t, err.Error(), "timed out")
+	case <-time.After(5 * time.Second):
+		t.Fatal("Render did not return after its timeout; blocking SDK render was not abandoned")
+	}
+}
+
+func TestHelmRenderer_TimeoutAbandonsBlockedSDK(t *testing.T) {
+	cfg := defaultCfg()
+	cfg.Render.Helm.Timeout = "50ms"
+	app := discovery.DiscoveredApp{Name: "frontend"}
+	assertRenderTimesOut(t, func(block func(context.Context, discovery.DiscoveredApp) ([]manifest.Manifest, error)) error {
+		r := newHelmRenderer(cfg)
+		r.sdk = block
+		_, err := r.Render(context.Background(), app)
+		return err
+	})
+}
+
+func TestKustomizeRenderer_TimeoutAbandonsBlockedSDK(t *testing.T) {
+	cfg := defaultCfg()
+	cfg.Render.Kustomize.Timeout = "50ms"
+	app := discovery.DiscoveredApp{Name: "base"}
+	assertRenderTimesOut(t, func(block func(context.Context, discovery.DiscoveredApp) ([]manifest.Manifest, error)) error {
+		r := newKustomizeRenderer(cfg)
+		r.sdk = block
+		_, err := r.Render(context.Background(), app)
+		return err
+	})
 }
