@@ -422,24 +422,20 @@ func TestNodeToValue_Errors(t *testing.T) {
 		name    string
 		doc     string
 		wantErr string
-		isMerge bool
+		wantIs  error
 	}{
-		{"sequence contains itself", "m: &a [*a]\n", "value contains itself", false},
-		{"mapping merges itself", "m: &a {k: 1, <<: *a}\n", "value contains itself", false},
-		{"scalar merge", "m: {<<: 5}\n", "", true},
-		{"null merge", "m: {<<: null}\n", "", true},
-		{"alias to sequence", "s: &s [1, 2]\nm: {<<: *s}\n", "", true},
-		{"mapping key", "? {a: 1}\n: v\n", "invalid map key", false},
-		{"sequence key", "? [1, 2]\n: v\n", "invalid map key", false},
-		{"alias to mapping as key", "a: &a {p: 1}\n? *a\n: v\n", "invalid map key", false},
-		{"non-finite float value", "v: .inf\n", "", false},
-		{"invalid binary", "v: !!binary \"###\"\n", "", false},
-		{"non-null !!null", "v: !!null yes\n", "", false},
-	}
-	sentinels := map[string]error{
-		"non-finite float value": errNonFiniteFloat,
-		"invalid binary":         errInvalidBinary,
-		"non-null !!null":        errInvalidNull,
+		{"sequence contains itself", "m: &a [*a]\n", "value contains itself", nil},
+		{"mapping merges itself", "m: &a {k: 1, <<: *a}\n", "value contains itself", nil},
+		{"scalar merge", "m: {<<: 5}\n", "", errMergeValue},
+		{"null merge", "m: {<<: null}\n", "", errMergeValue},
+		{"alias to sequence", "s: &s [1, 2]\nm: {<<: *s}\n", "", errMergeValue},
+		{"mapping key", "? {a: 1}\n: v\n", "invalid map key", nil},
+		{"sequence key", "? [1, 2]\n: v\n", "invalid map key", nil},
+		{"alias to mapping as key", "a: &a {p: 1}\n? *a\n: v\n", "invalid map key", nil},
+		{"non-finite float value", "v: .inf\n", "", errNonFiniteFloat},
+		{"non-finite float document root", ".inf\n", "", errNonFiniteFloat},
+		{"invalid binary", "v: !!binary \"###\"\n", "", errInvalidBinary},
+		{"non-null !!null", "v: !!null yes\n", "", errInvalidNull},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -447,10 +443,8 @@ func TestNodeToValue_Errors(t *testing.T) {
 			require.NoError(t, yaml.Unmarshal([]byte(tc.doc), &n))
 			_, err := nodeToValue(&n)
 			require.Error(t, err)
-			if tc.isMerge {
-				require.ErrorIs(t, err, errMergeValue)
-			} else if sentinel, ok := sentinels[tc.name]; ok {
-				require.ErrorIs(t, err, sentinel)
+			if tc.wantIs != nil {
+				require.ErrorIs(t, err, tc.wantIs)
 			} else {
 				require.ErrorContains(t, err, tc.wantErr)
 			}

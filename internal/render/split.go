@@ -169,7 +169,8 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 // aliasedMapCost plus aliasedEntryCost per pair, every aliased sequence
 // aliasedSeqCost plus aliasedElemCost per element, and every entry a merge
 // copies from an alias or inside aliased content aliasedMergeEntryCost;
-// aliased typed scalars add aliasedDecodeCost plus 2*len(n.Value), and
+// aliased typed scalars add aliasedDecodeCost plus 2*len(n.Value) (aliased
+// !!binary scalars aliasedBinaryCost plus 3*len(n.Value) instead), and
 // non-string keys add aliasedKeyFormatCost.
 // These are shaped like the heap the conversion allocates, so the budget bounds
 // memory and not just output size. On top of that comes 2 bytes per level of
