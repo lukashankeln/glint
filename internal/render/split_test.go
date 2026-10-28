@@ -428,6 +428,9 @@ func TestNodeToValue_Errors(t *testing.T) {
 		{"scalar merge", "m: {<<: 5}\n", "", true},
 		{"null merge", "m: {<<: null}\n", "", true},
 		{"alias to sequence", "s: &s [1, 2]\nm: {<<: *s}\n", "", true},
+		{"mapping key", "? {a: 1}\n: v\n", "invalid map key", false},
+		{"sequence key", "? [1, 2]\n: v\n", "invalid map key", false},
+		{"alias to mapping as key", "a: &a {p: 1}\n? *a\n: v\n", "invalid map key", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -545,4 +548,54 @@ func TestNodeToValue_ManyModerateAliasesAccepted(t *testing.T) {
 	require.NoError(t, err)
 	data := v.(map[string]any)["data"].(map[string]any)
 	assert.Len(t, data, 51)
+}
+
+func TestSplitYAML_CrossDocumentAliasSkipsDocument(t *testing.T) {
+	def := mergeDocHeader + "data:\n  x: &a {p: 1}\n"
+	ref := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: ref\ndata:\n  y: *a\n"
+	good := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: good\n"
+
+	var tmp map[string]any
+	assert.Error(t, sigsyaml.Unmarshal([]byte(ref), &tmp))
+
+	manifests, err := SplitYAML([]byte(def+"---\n"+ref+"---\n"+good), "app", "file.yaml", false)
+	require.NoError(t, err)
+	require.Len(t, manifests, 2)
+	assert.Equal(t, "cm1", manifests[0].Name)
+	assert.Equal(t, "good", manifests[1].Name)
+}
+
+func TestNodeToValue_UnknownAnchor(t *testing.T) {
+	dec := yaml.NewDecoder(strings.NewReader("x: &a {p: 1}\n---\ny: *a\n"))
+	var d1, d2 yaml.Node
+	require.NoError(t, dec.Decode(&d1))
+	require.NoError(t, dec.Decode(&d2))
+	_, err := nodeToValue(&d1)
+	require.NoError(t, err)
+	_, err = nodeToValue(&d2)
+	require.ErrorContains(t, err, `unknown anchor "a"`)
+}
+
+func TestSplitYAML_ComplexKeySkipsDocument(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"mapping key", "  ? {a: 1}\n  : v\n"},
+		{"sequence key", "  ? [1, 2]\n  : v\n"},
+	}
+	good := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: good\n"
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			bad := mergeDocHeader + "data:\n" + tc.body
+
+			var tmp map[string]any
+			assert.Error(t, sigsyaml.Unmarshal([]byte(bad), &tmp))
+
+			manifests, err := SplitYAML([]byte(good+"---\n"+bad), "app", "file.yaml", false)
+			require.NoError(t, err)
+			require.Len(t, manifests, 1)
+			assert.Equal(t, "good", manifests[0].Name)
+		})
+	}
 }

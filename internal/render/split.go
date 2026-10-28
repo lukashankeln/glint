@@ -107,9 +107,27 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 // Alias expansion is bounded with yaml.v3's excessive-aliasing heuristic, so a
 // "billion laughs" document fails with errExcessiveAliasing instead of
 // exhausting CPU and memory; the counters are per call, i.e. per document.
+//
+// An alias whose anchor is defined outside the given tree (yaml.v3 keeps
+// anchors across Decode calls on one stream) is an "unknown anchor" error, as
+// when each document was parsed alone. A mapping key that converts to a
+// mapping or sequence is an "invalid map key" error, as in sigs.k8s.io/yaml.
 func nodeToValue(n *yaml.Node) (any, error) {
-	c := converter{expanding: map[*yaml.Node]bool{}}
+	c := converter{expanding: map[*yaml.Node]bool{}, inTree: map[*yaml.Node]bool{}}
+	collectNodes(n, c.inTree)
 	return c.convert(n)
+}
+
+// collectNodes records every node of the tree rooted at n, without following
+// AliasNode.Alias, so only nodes belonging to this document are included.
+func collectNodes(n *yaml.Node, set map[*yaml.Node]bool) {
+	if n == nil || set[n] {
+		return
+	}
+	set[n] = true
+	for _, ch := range n.Content {
+		collectNodes(ch, set)
+	}
 }
 
 // converter carries the per-call state of nodeToValue. expanding holds the
@@ -118,6 +136,7 @@ func nodeToValue(n *yaml.Node) (any, error) {
 // same names on yaml.v3's decoder and drive the excessive-aliasing guard.
 type converter struct {
 	expanding   map[*yaml.Node]bool
+	inTree      map[*yaml.Node]bool // nodes of the document being converted
 	decodeCount int
 	aliasCount  int
 	aliasDepth  int
@@ -175,6 +194,9 @@ func (c *converter) expand(alias *yaml.Node) (any, error) {
 	if target == nil {
 		return nil, fmt.Errorf("alias %q has no target", alias.Value)
 	}
+	if !c.inTree[target] {
+		return nil, fmt.Errorf("unknown anchor %q referenced", alias.Value)
+	}
 	if c.expanding[target] {
 		name := target.Anchor
 		if name == "" {
@@ -218,6 +240,8 @@ func (c *converter) mergeSource(m map[string]any, src *yaml.Node) error {
 	}
 	return nil
 }
+
+var errInvalidMapKey = errors.New("invalid map key: mapping or sequence")
 
 var errMergeValue = errors.New("map merge requires map or sequence of maps as the value")
 
@@ -263,6 +287,10 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 			k, err := c.convert(n.Content[i])
 			if err != nil {
 				return nil, err
+			}
+			switch k.(type) {
+			case map[string]any, []any:
+				return nil, errInvalidMapKey
 			}
 			ks, ok := k.(string)
 			if !ok {
