@@ -2,10 +2,13 @@ package render
 
 import (
 	"bytes"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strings"
+	"unicode/utf8"
 
 	"log/slog"
 
@@ -120,8 +123,9 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 // nodeToValue converts a parsed yaml.Node tree into the same JSON-compatible
 // shape sigs.k8s.io/yaml produces (map[string]any / []any / string / float64 /
 // bool / nil), without re-parsing the document as text. Scalars are typed by
-// their resolved YAML tag, with anything other than !!null/!!bool/!!int/!!float
-// — including !!str and !!timestamp — kept as a plain string (except plain
+// their resolved YAML tag, with anything other than
+// !!null/!!bool/!!int/!!float/!!binary — including !!str and !!timestamp —
+// kept as a plain string (except plain
 // YAML 1.1 bool literals, below), matching JSON's lack of a native date/time
 // type and avoiding go-yaml's generic-decode behavior of turning bare dates
 // into time.Time.
@@ -133,6 +137,17 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 // !!str-tagged and block scalars stay strings. yaml.v3
 // drops a bare "!" tag, so `! yes` is seen as plain and becomes true, matching
 // the old v3 re-encode pipeline rather than raw sigs.k8s.io/yaml.
+//
+// A !!null scalar must be one of the YAML 1.1 null literals ("", ~, null, Null,
+// NULL, in any style); `!!null yes` is an error. A !!binary scalar is
+// base64-decoded (invalid data is an error) and each invalid UTF-8 byte of the
+// result becomes U+FFFD, as after the old JSON round trip. Two !!binary keys
+// that collapse to the same string keep the later one in document order; the
+// old pipeline kept the one whose raw key bytes sorted last, a difference
+// not matched here. A non-finite float (.inf, -.inf, .nan) is an error as a
+// value, because JSON cannot carry it, but is accepted as a mapping key, named
+// ".inf", "-.inf" or ".nan". A document whose root is such a scalar is skipped
+// because conversion fails, rather than for not being a mapping.
 //
 // Merge keys (<<) follow go-yaml v2 semantics: mapping pairs are processed in
 // order, so a merge overwrites explicit keys before it and is overwritten by
@@ -265,6 +280,13 @@ const (
 	// charged per decoded scalar (len(Value) itself is already charged once
 	// as a scalar); that extra 2*len covers the decode allocation (~2*len).
 	aliasedDecodeCost = 320
+	// aliasedBinaryCost is charged for an aliased !!binary scalar, on top of
+	// 3*len(Value) (len(Value) itself is already charged once as a scalar).
+	// Base64 decoding allocates ~0.75*len, and the UTF-8 fix-up builder is
+	// sized for the worst case of every byte invalid, 3 output bytes per
+	// decoded byte (2.25*len), so ~3*len in all. The constant is the fixed
+	// part: the builder header and the boxed string, with margin.
+	aliasedBinaryCost = 64
 	// aliasedKeyFormatCost is charged per aliased mapping key that is not a
 	// string and so is formatted with fmt.Sprint.
 	aliasedKeyFormatCost = 64
@@ -401,6 +423,73 @@ func (c *converter) mergeSource(m map[string]any, src *yaml.Node) error {
 
 var errInvalidMapKey = errors.New("invalid map key: mapping or sequence")
 
+var (
+	// errNonFiniteFloat rejects .inf/.nan as a value, as encoding/json does.
+	errNonFiniteFloat = errors.New("unsupported value: non-finite float")
+	errInvalidBinary  = errors.New("!!binary value contains invalid base64 data")
+	errInvalidNull    = errors.New("!!null value is not a null literal")
+)
+
+// nullLiterals are the scalars go-yaml v2 resolves as null (YAML 1.1), in any
+// style; an explicit !!null tag accepts only these.
+var nullLiterals = map[string]bool{"": true, "~": true, "null": true, "Null": true, "NULL": true}
+
+// convertValue is convert for a value position (mapping value, sequence
+// element, document root): a non-finite float there is an error, because JSON
+// cannot carry it. Keys go through convert and are named by formatKey.
+func (c *converter) convertValue(n *yaml.Node) (any, error) {
+	v, err := c.convert(n)
+	if err != nil {
+		return nil, err
+	}
+	if f, ok := v.(float64); ok && (math.IsInf(f, 0) || math.IsNaN(f)) {
+		return nil, fmt.Errorf("%w: %v", errNonFiniteFloat, f)
+	}
+	return v, nil
+}
+
+// decodeBinary decodes a !!binary scalar like go-yaml v2 followed by a JSON
+// round trip: base64 (newlines ignored), then each invalid UTF-8 byte becomes
+// U+FFFD, one per byte as encoding/json does (strings.ToValidUTF8 would
+// collapse a run into one).
+func decodeBinary(value string) (string, error) {
+	raw, err := base64.StdEncoding.DecodeString(value)
+	if err != nil {
+		return "", errInvalidBinary
+	}
+	if utf8.Valid(raw) {
+		return string(raw), nil
+	}
+	var b strings.Builder
+	b.Grow(3 * len(raw)) // worst case: every byte invalid, 1 -> 3 bytes
+	for i := 0; i < len(raw); {
+		r, size := utf8.DecodeRune(raw[i:])
+		if r == utf8.RuneError && size == 1 {
+			b.WriteString("\uFFFD")
+		} else {
+			b.Write(raw[i : i+size])
+		}
+		i += size
+	}
+	return b.String(), nil
+}
+
+// formatKey names a non-string mapping key. Non-finite floats use the YAML
+// spellings sigs.k8s.io/yaml gives them.
+func formatKey(k any) string {
+	if f, ok := k.(float64); ok {
+		switch {
+		case math.IsInf(f, 1):
+			return ".inf"
+		case math.IsInf(f, -1):
+			return "-.inf"
+		case math.IsNaN(f):
+			return ".nan"
+		}
+	}
+	return fmt.Sprint(k)
+}
+
 var errMergeValue = errors.New("map merge requires map or sequence of maps as the value")
 
 func (c *converter) merge(m map[string]any, v *yaml.Node) error {
@@ -431,7 +520,7 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 		if len(n.Content) == 0 {
 			return nil, nil
 		}
-		return c.convert(n.Content[0])
+		return c.convertValue(n.Content[0])
 
 	case yaml.AliasNode:
 		return c.expand(n)
@@ -467,9 +556,9 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 						return nil, err
 					}
 				}
-				ks = fmt.Sprint(k)
+				ks = formatKey(k)
 			}
-			v, err := c.convert(n.Content[i+1])
+			v, err := c.convertValue(n.Content[i+1])
 			if err != nil {
 				return nil, err
 			}
@@ -487,7 +576,7 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 		c.depth++
 		defer func() { c.depth-- }()
 		for i, e := range n.Content {
-			v, err := c.convert(e)
+			v, err := c.convertValue(e)
 			if err != nil {
 				return nil, err
 			}
@@ -503,7 +592,17 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 		}
 		switch n.Tag {
 		case "!!null":
+			if !nullLiterals[n.Value] {
+				return nil, errInvalidNull
+			}
 			return nil, nil
+		case "!!binary":
+			if c.aliasDepth > 0 {
+				if err := c.charge(aliasedBinaryCost + 3*len(n.Value)); err != nil {
+					return nil, err
+				}
+			}
+			return decodeBinary(n.Value)
 		case "!!bool":
 			if b, ok := yaml11Bools[n.Value]; ok {
 				return b, nil // e.g. `!!bool yes`, which yaml.v3 fails to decode
