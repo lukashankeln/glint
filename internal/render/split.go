@@ -93,6 +93,14 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 // lack of a native date/time type and avoiding go-yaml's generic-decode
 // behavior of turning bare dates into time.Time.
 //
+// Plain (unquoted, untagged) YAML 1.1 bool literals that yaml.v3 resolves as
+// strings — y/yes/on/n/no/off in the case forms go-yaml v2 accepts — become
+// bools, as in sigs.k8s.io/yaml and Kubernetes; as mapping keys they become
+// "true"/"false". An explicit !!bool tag accepts them in any style. Quoted,
+// !!str-tagged and block scalars stay strings. yaml.v3
+// drops a bare "!" tag, so `! yes` is seen as plain and becomes true, matching
+// the old v3 re-encode pipeline rather than raw sigs.k8s.io/yaml.
+//
 // Merge keys (<<) follow go-yaml v2 semantics: mapping pairs are processed in
 // order, so a merge overwrites explicit keys before it and is overwritten by
 // explicit keys after it. A merge value must be a mapping, an alias to a
@@ -145,6 +153,19 @@ type converter struct {
 	aliasCount  int
 	aliasDepth  int
 }
+
+// yaml11Bools holds the go-yaml v2 (YAML 1.1) bool literals that yaml.v3's
+// YAML 1.2 resolver tags !!str. true/false are already !!bool in yaml.v3.
+var yaml11Bools = map[string]bool{
+	"y": true, "Y": true, "yes": true, "Yes": true, "YES": true,
+	"on": true, "On": true, "ON": true,
+	"n": false, "N": false, "no": false, "No": false, "NO": false,
+	"off": false, "Off": false, "OFF": false,
+}
+
+// nonPlainStyle marks a scalar whose presentation pins it to a string.
+const nonPlainStyle = yaml.TaggedStyle | yaml.DoubleQuotedStyle | yaml.SingleQuotedStyle |
+	yaml.LiteralStyle | yaml.FoldedStyle
 
 var errExcessiveAliasing = errors.New("document contains excessive aliasing")
 
@@ -327,6 +348,9 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 		case "!!null":
 			return nil, nil
 		case "!!bool":
+			if b, ok := yaml11Bools[n.Value]; ok {
+				return b, nil // e.g. `!!bool yes`, which yaml.v3 fails to decode
+			}
 			var b bool
 			if err := n.Decode(&b); err != nil {
 				return nil, err
@@ -338,6 +362,13 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 				return nil, err
 			}
 			return f, nil
+		case "!!str":
+			if n.Style&nonPlainStyle == 0 {
+				if b, ok := yaml11Bools[n.Value]; ok {
+					return b, nil
+				}
+			}
+			return n.Value, nil
 		default:
 			return n.Value, nil
 		}
