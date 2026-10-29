@@ -34,6 +34,8 @@ var (
 // A stream over maxStreamBytes, or with more than maxStreamDocuments
 // documents (empty ones included), returns an error wrapping errStreamTooLarge
 // or errTooManyDocuments. A document that fails to decode returns an error.
+// So does a quoted or block "<<" mapping key whose dropped "!" tag cannot be
+// resolved from the source text: the error wraps ErrAmbiguousMergeKey.
 // A document that decodes but fails conversion (e.g. alias limits, the
 // nesting/indentation budget, invalid map keys, self-referential or unknown
 // anchors) is skipped with a debug log.
@@ -51,6 +53,7 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 	indentBudget := indentByteBudget(len(data))
 
 	dec := yaml.NewDecoder(bytes.NewReader(data))
+	cursor := newSourceCursor(data)
 	docCount := 0
 	for {
 		var node yaml.Node
@@ -67,6 +70,12 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 		}
 		if node.Kind == 0 {
 			continue // empty doc
+		}
+
+		// yaml.v3 drops a bare "!" tag; recover it from the source so that
+		// the re-encoded Raw and the conversion see the merge key.
+		if err := mergeTagResolver(cursor, &node); err != nil {
+			return nil, fmt.Errorf("resolving merge keys: %w", err)
 		}
 
 		// Re-encode the single document (needed for Manifest.Raw).
@@ -161,8 +170,9 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 // Self-referential anchors return an error instead of recursing forever.
 //
 // Detection works on the yaml.v3 Node, which drops a bare non-specific "!" tag,
-// so `! "<<"` (a merge key to go-yaml v2 / Kubernetes) is seen here as the
-// literal key "<<". This matches the old v3 re-encode pipeline, not raw sigs.k8s.io/yaml.
+// so `! "<<"` (a merge key to go-yaml v2 / Kubernetes) looks like the literal
+// key "<<". SplitYAML resolves the dropped "!" on quoted and block "<<" keys
+// from the source before converting; nodeToValue alone sees the Node as given.
 //
 // Alias expansion is bounded two ways. yaml.v3's excessive-aliasing heuristic
 // makes a "billion laughs" document fail with errExcessiveAliasing instead of
@@ -647,6 +657,11 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 		defer func() { c.depth-- }()
 		for i := 0; i+1 < len(n.Content); i += 2 {
 			if isMergeKey(n.Content[i]) {
+				// An anchored merge key is never converted, but an alias
+				// may still refer to it (as the string "<<").
+				if n.Content[i].Anchor != "" {
+					c.anchors[n.Content[i]] = true
+				}
 				if err := c.merge(m, n.Content[i+1]); err != nil {
 					return nil, err
 				}
