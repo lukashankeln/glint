@@ -219,6 +219,8 @@ output:
 
 CLI flags `--format` and `--output` override these values per-run.
 
+A report file (`--output`, `--output-sarif`, `--output-junit`, `--output-json`) that cannot be fully written or closed makes `glint lint` exit `2` regardless of `fail_on`, and a partially written regular file is removed.
+
 ---
 
 ## `fail_on`
@@ -229,7 +231,7 @@ fail_on:
   # - warning   # uncomment to also fail on warnings
 ```
 
-Pass `--fail-on ""` (empty string) to suppress exit code 1 entirely — useful for SARIF generation steps that should never block the pipeline.
+Pass `--fail-on ""` (empty string) to suppress exit code 1 entirely — useful for SARIF generation steps that should never block the pipeline. A SARIF or other report file that cannot be written still exits `2`.
 
 ---
 
