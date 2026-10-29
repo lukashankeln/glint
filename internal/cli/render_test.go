@@ -36,12 +36,15 @@ func TestRender_FailedAppFailsRun(t *testing.T) {
 	var goodName, badName string
 	renderApps = func(_ context.Context, apps []discovery.DiscoveredApp, _ *config.Config) []renderResult {
 		require.GreaterOrEqual(t, len(apps), 2)
-		goodName, badName = apps[0].Name, apps[1].Name
+		// The failing app comes first, so a render that stopped at the first
+		// failure would never print the good app.
+		badName, goodName = apps[0].Name, apps[1].Name
 		results := make([]renderResult, len(apps))
 		for i, a := range apps {
 			results[i] = renderResult{app: a}
 		}
-		results[0] = renderResult{app: apps[0], manifests: []manifest.Manifest{{
+		results[0] = renderResult{app: apps[0], err: errors.New("helm template failed")}
+		results[1] = renderResult{app: apps[1], manifests: []manifest.Manifest{{
 			APIVersion: "v1", Kind: "ConfigMap", Name: "good-config",
 			Object: map[string]any{
 				"apiVersion": "v1",
@@ -49,7 +52,6 @@ func TestRender_FailedAppFailsRun(t *testing.T) {
 				"metadata":   map[string]any{"name": "good-config"},
 			},
 		}}}
-		results[1] = renderResult{app: apps[1], err: errors.New("helm template failed")}
 		return results
 	}
 
