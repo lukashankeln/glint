@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -107,6 +108,9 @@ func (r *HelmRenderer) renderSDK(ctx context.Context, app discovery.DiscoveredAp
 	var ch chart.Charter
 	if app.RootPath != "" {
 		// Local chart
+		if err := checkLocalChart(app.RootPath); err != nil {
+			return nil, err
+		}
 		var err error
 		ch, err = loader.Load(app.RootPath)
 		if err != nil {
@@ -392,4 +396,19 @@ func normalizeRepoURL(repoURL string) string {
 	}
 	// Bare hostname — treat as OCI registry.
 	return "oci://" + repoURL
+}
+
+// checkLocalChart rejects a local chart whose Chart.yaml or .helmignore is
+// non-regular or over maxStreamBytes, before Helm's loader opens them with an
+// unbounded read. Other Stat errors (missing, or root not a directory) are
+// ignored: root may lack a Chart.yaml or be a packaged .tgz, which the loader
+// handles itself.
+func checkLocalChart(root string) error {
+	for _, name := range []string{"Chart.yaml", ".helmignore"} {
+		err := checkFileCapped(filepath.Join(root, name), maxStreamBytes)
+		if errors.Is(err, errStreamTooLarge) || errors.Is(err, fsutil.ErrNotRegular) {
+			return fmt.Errorf("loading chart at %q: %w", root, err)
+		}
+	}
+	return nil
 }

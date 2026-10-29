@@ -31,6 +31,16 @@ func readFileCapped(path string, limit int) ([]byte, error) {
 	return data, err
 }
 
+// checkFileCapped is readFileCapped without the read: it Stats path and
+// applies the same regular-file and size checks, never opening it.
+func checkFileCapped(path string, limit int) error {
+	err := fsutil.CheckFileCapped(path, limit)
+	if errors.Is(err, fsutil.ErrTooLarge) {
+		return fmt.Errorf("%w: %w", errStreamTooLarge, err)
+	}
+	return err
+}
+
 // cappedBuffer collects writes up to limit bytes. The buffer is a named field,
 // not embedded, so bytes.Buffer.ReadFrom is not promoted: io.Copy would prefer
 // it and bypass the cap.
