@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"strings"
 	"unicode/utf8"
@@ -155,9 +156,9 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 // Merge keys (<<) follow go-yaml v2 semantics: mapping pairs are processed in
 // order, so a merge overwrites explicit keys before it and is overwritten by
 // explicit keys after it. A merge value must be a mapping, an alias to a
-// mapping, or a sequence of those (applied in reverse so earlier sources win);
-// anything else is an error. Merging is shallow. Self-referential anchors
-// return an error instead of recursing forever.
+// mapping, or a sequence of those (converted in document order, then copied so
+// earlier sources win); anything else is an error. Merging is shallow.
+// Self-referential anchors return an error instead of recursing forever.
 //
 // Detection works on the yaml.v3 Node, which drops a bare non-specific "!" tag,
 // so `! "<<"` (a merge key to go-yaml v2 / Kubernetes) is seen here as the
@@ -228,9 +229,9 @@ func nodeToValueBudget(n *yaml.Node, aliasBudget, indentBudget *int) (any, error
 // themselves. anchors records every anchored node convert has reached so far
 // in this document, so an alias can be checked against it directly instead of
 // pre-walking the whole tree: YAML requires an anchor to be defined (and thus
-// already visited, since convert follows document order) before any alias
-// references it — yaml.v3 itself rejects forward references at parse time —
-// so the only way expand's lookup can miss is a target from outside this
+// already visited, since convert follows document order, merge sequences
+// included) before any alias references it — yaml.v3 itself rejects
+// forward references at parse time — so the only way expand's lookup can miss is a target from outside this
 // document, e.g. an earlier document on the same decoder stream. decodeCount,
 // aliasCount and aliasDepth mirror the fields of the same names on yaml.v3's
 // decoder and drive the excessive-aliasing guard.
@@ -479,8 +480,9 @@ func (c *converter) expand(alias *yaml.Node) (any, error) {
 }
 
 // mergeSource converts one merge source (a mapping or an alias to a mapping)
-// and copies its top-level entries into m.
-func (c *converter) mergeSource(m map[string]any, src *yaml.Node) error {
+// and returns its top-level entries, charged against the aliasing budget. The
+// caller copies them into the merged map.
+func (c *converter) mergeSource(src *yaml.Node) (map[string]any, error) {
 	var (
 		v   any
 		err error
@@ -491,27 +493,24 @@ func (c *converter) mergeSource(m map[string]any, src *yaml.Node) error {
 	case src.Kind == yaml.AliasNode && src.Alias != nil && src.Alias.Kind == yaml.MappingNode:
 		v, err = c.expand(src)
 	default:
-		return errMergeValue
+		return nil, errMergeValue
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 	sm, ok := v.(map[string]any)
 	if !ok {
-		return errMergeValue
+		return nil, errMergeValue
 	}
 	// The copy grows m past its presize, and m is usually not an aliased node
 	// itself, so charge for that growth whenever the copied entries came from
 	// or into aliased content.
 	if src.Kind == yaml.AliasNode || c.aliasDepth > 0 {
 		if err := c.charge(aliasedMergeEntryCost * len(sm)); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	for k, x := range sm {
-		m[k] = x
-	}
-	return nil
+	return sm, nil
 }
 
 var errInvalidMapKey = errors.New("invalid map key: mapping or sequence")
@@ -585,16 +584,31 @@ func formatKey(k any) string {
 
 var errMergeValue = errors.New("map merge requires map or sequence of maps as the value")
 
+// merge applies the merge value v to m. A sequence's sources are converted in
+// document order, as yaml.v3's forward merge iteration does (which the
+// aliasing guard mirrors, and which lets a later source use an anchor defined
+// in an earlier one), then copied in reverse so earlier sources win.
 func (c *converter) merge(m map[string]any, v *yaml.Node) error {
 	if v.Kind == yaml.SequenceNode {
-		for i := len(v.Content) - 1; i >= 0; i-- {
-			if err := c.mergeSource(m, v.Content[i]); err != nil {
+		srcs := make([]map[string]any, 0, len(v.Content))
+		for _, n := range v.Content {
+			sm, err := c.mergeSource(n)
+			if err != nil {
 				return err
 			}
+			srcs = append(srcs, sm)
+		}
+		for i := len(srcs) - 1; i >= 0; i-- {
+			maps.Copy(m, srcs[i])
 		}
 		return nil
 	}
-	return c.mergeSource(m, v)
+	sm, err := c.mergeSource(v)
+	if err != nil {
+		return err
+	}
+	maps.Copy(m, sm)
+	return nil
 }
 
 func (c *converter) convert(n *yaml.Node) (any, error) {

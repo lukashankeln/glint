@@ -561,6 +561,55 @@ func TestNodeToValue_ManyModerateAliasesAccepted(t *testing.T) {
 	assert.Equal(t, map[string]any{"a": float64(1), "b": float64(2), "c": float64(3)}, data["k199"])
 }
 
+func TestNodeToValue_AnchorDefinedEarlierInMergeSequence(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want map[string]any
+	}{
+		{"alias of earlier source", "m: {<<: [&a {x: 1}, *a]}\n",
+			map[string]any{"m": map[string]any{"x": float64(1)}}},
+		{"nested anchor reached from later source", "m: {<<: [&a {x: &b {p: 1}}, {q: *b}]}\n",
+			map[string]any{"m": map[string]any{
+				"x": map[string]any{"p": float64(1)},
+				"q": map[string]any{"p": float64(1)},
+			}}},
+		{"earlier source used as later value", "m: {<<: [&a {x: 1}, {k: *a}]}\n",
+			map[string]any{"m": map[string]any{
+				"x": float64(1),
+				"k": map[string]any{"x": float64(1)},
+			}}},
+		{"earlier source wins, explicit key after wins", "m: {<<: [&a {x: 1, w: 1}, {x: 2, w: 2, z: 3}], w: 9}\n",
+			map[string]any{"m": map[string]any{
+				"x": float64(1), "w": float64(9), "z": float64(3),
+			}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var node yaml.Node
+			require.NoError(t, yaml.Unmarshal([]byte(tc.src), &node))
+			got, err := nodeToValue(&node)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+
+			var viaSigs map[string]any
+			require.NoError(t, sigsyaml.Unmarshal([]byte(tc.src), &viaSigs))
+			assert.Equal(t, viaSigs, got)
+		})
+	}
+}
+
+func TestSplitYAML_AnchorDefinedEarlierInMergeSequenceEmitted(t *testing.T) {
+	data := []byte(mergeDocHeader + "data:\n  m: {<<: [&a {x: 1}, *a]}\n")
+	var want map[string]any
+	require.NoError(t, sigsyaml.Unmarshal(data, &want))
+
+	manifests, err := SplitYAML(data, "app", "file.yaml", false)
+	require.NoError(t, err)
+	require.Len(t, manifests, 1)
+	assert.Equal(t, want, manifests[0].Object)
+}
+
 func TestNodeToValue_AnchorInsideMergeSequence(t *testing.T) {
 	var node yaml.Node
 	require.NoError(t, yaml.Unmarshal([]byte("data:\n  <<: [&x {a: 1}]\n  other: *x\n"), &node))
