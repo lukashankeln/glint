@@ -228,3 +228,20 @@ func TestSplitYAML_ResolverErrorIsReturned(t *testing.T) {
 	assert.True(t, errors.Is(err, ErrAmbiguousMergeKey))
 	assert.Nil(t, ms)
 }
+
+func TestDecodeUTF16_MatchesStdlib(t *testing.T) {
+	units := append(utf16.Encode([]rune("a: é 日本 😀\n x")), 0xD800, 'b', 0xDC00)
+	want := string(utf16.Decode(units))
+	for _, bigEndian := range []bool{false, true} {
+		b := make([]byte, 2*len(units))
+		for i, u := range units {
+			if bigEndian {
+				binary.BigEndian.PutUint16(b[2*i:], u)
+			} else {
+				binary.LittleEndian.PutUint16(b[2*i:], u)
+			}
+		}
+		assert.Equal(t, want, string(decodeUTF16(b, bigEndian)), "bigEndian=%v", bigEndian)
+		assert.Equal(t, want, string(decodeUTF16(append(b, 0x41), bigEndian)), "odd trailing byte, bigEndian=%v", bigEndian)
+	}
+}
