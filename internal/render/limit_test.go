@@ -227,3 +227,27 @@ func TestHelmRenderer_ChartYAMLTooLarge(t *testing.T) {
 	assert.False(t, errors.Is(err, errStreamTooLarge))
 	assert.False(t, errors.Is(err, fsutil.ErrNotRegular))
 }
+
+func TestHelmRenderer_HelmignoreTooLarge(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Chart.yaml"), []byte("apiVersion: v2\nname: c\nversion: 0.1.0\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".helmignore"), []byte(strings.Repeat("x\n", 100)), 0o644))
+	lowerStreamLimits(t, 100, maxStreamDocuments)
+
+	_, err := newHelmRenderer(defaultCfg()).renderSDK(context.Background(), discovery.DiscoveredApp{Name: "c", RootPath: dir})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, errStreamTooLarge))
+	assert.Contains(t, err.Error(), ".helmignore")
+}
+
+// A root without a Chart.yaml, or one that is a packaged chart file, is left to
+// Helm's loader: only non-regular and oversized files are rejected up front.
+func TestCheckLocalChart_DefersOtherErrorsToLoader(t *testing.T) {
+	dir := t.TempDir()
+	assert.NoError(t, checkLocalChart(dir))
+	assert.NoError(t, checkLocalChart(filepath.Join(dir, "missing")))
+
+	tgz := filepath.Join(dir, "chart.tgz")
+	require.NoError(t, os.WriteFile(tgz, []byte("not really a tarball"), 0o644))
+	assert.NoError(t, checkLocalChart(tgz))
+}

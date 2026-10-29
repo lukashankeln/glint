@@ -8,11 +8,12 @@ import (
 	"os"
 )
 
-// ErrNotRegular is wrapped by ReadFileCapped when the path (after following
+// ErrNotRegular is wrapped by CheckFileCapped and ReadFileCapped when the path (after following
 // symlinks) is not a regular file, e.g. a device or a FIFO.
 var ErrNotRegular = errors.New("not a regular file")
 
-// ErrTooLarge is wrapped by ReadFileCapped when the file exceeds the limit.
+// ErrTooLarge is wrapped by CheckFileCapped and ReadFileCapped when the file
+// exceeds the limit.
 var ErrTooLarge = errors.New("file too large")
 
 // CheckFileCapped reports whether path, after following symlinks, is a regular
