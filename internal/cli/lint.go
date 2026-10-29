@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -78,7 +79,9 @@ func newLintCmd() *cobra.Command {
 			}
 
 			if len(apps) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "No apps discovered.")
+				if _, err := fmt.Fprintln(cmd.OutOrStdout(), "No apps discovered."); err != nil {
+					return fmt.Errorf("writing output: %w", err)
+				}
 				return nil
 			}
 
@@ -138,17 +141,14 @@ func newLintCmd() *cobra.Command {
 			violations = filterViolations(violations, onlyRules, skipRules)
 
 			// Write primary output.
-			w := cmd.OutOrStdout()
 			if cfg.Output.OutputFile != "" {
-				f, err := os.Create(cfg.Output.OutputFile)
+				err := writeReportFile(cfg.Output.OutputFile, func(w io.Writer) error {
+					return writeOutput(w, violations, cfg.Output.Format)
+				})
 				if err != nil {
-					return fmt.Errorf("creating output file: %w", err)
+					return fmt.Errorf("writing output: %w", err)
 				}
-				defer f.Close()
-				w = f
-			}
-
-			if err := writeOutput(w, violations, cfg.Output.Format); err != nil {
+			} else if err := writeOutput(cmd.OutOrStdout(), violations, cfg.Output.Format); err != nil {
 				return fmt.Errorf("writing output: %w", err)
 			}
 
@@ -160,30 +160,28 @@ func newLintCmd() *cobra.Command {
 				}
 				errCount := countBySeverity(violations, rules.SeverityError)
 				warnCount := countBySeverity(violations, rules.SeverityWarning)
-				fmt.Fprintf(stdout, "\n%d errors, %d warnings across %d resources\n",
-					errCount, warnCount, len(allManifests))
+				if _, err := fmt.Fprintf(stdout, "\n%d errors, %d warnings across %d resources\n",
+					errCount, warnCount, len(allManifests)); err != nil {
+					return fmt.Errorf("writing summary: %w", err)
+				}
 			}
 
 			// Write SARIF alongside any other format (e.g. github-actions + sarif in one run).
 			if outputSARIF != "" {
-				f, err := os.Create(outputSARIF)
+				err := writeReportFile(outputSARIF, func(w io.Writer) error {
+					return writeSARIF(w, violations)
+				})
 				if err != nil {
-					return fmt.Errorf("creating SARIF output file: %w", err)
-				}
-				defer f.Close()
-				if err := writeSARIF(f, violations); err != nil {
 					return fmt.Errorf("writing SARIF output: %w", err)
 				}
 			}
 
 			// Write JUnit alongside any other format.
 			if outputJUnit != "" {
-				f, err := os.Create(outputJUnit)
+				err := writeReportFile(outputJUnit, func(w io.Writer) error {
+					return writeJUnit(w, violations)
+				})
 				if err != nil {
-					return fmt.Errorf("creating JUnit output file: %w", err)
-				}
-				defer f.Close()
-				if err := writeJUnit(f, violations); err != nil {
 					return fmt.Errorf("writing JUnit output: %w", err)
 				}
 			}
@@ -191,14 +189,12 @@ func newLintCmd() *cobra.Command {
 			// Write JSON summary if requested (for CI step output capture).
 			if outputJSON != "" {
 				s := buildSummary(violations)
-				f, err := os.Create(outputJSON)
+				err := writeReportFile(outputJSON, func(w io.Writer) error {
+					enc := json.NewEncoder(w)
+					enc.SetIndent("", "  ")
+					return enc.Encode(s)
+				})
 				if err != nil {
-					return fmt.Errorf("creating json output file: %w", err)
-				}
-				defer f.Close()
-				enc := json.NewEncoder(f)
-				enc.SetIndent("", "  ")
-				if err := enc.Encode(s); err != nil {
 					return fmt.Errorf("writing json summary: %w", err)
 				}
 			}
@@ -318,4 +314,31 @@ func failsThreshold(violations []rules.Violation, failOn []string) bool {
 		}
 	}
 	return false
+}
+
+// writeReportFile creates path, writes it with write and closes it. Any write
+// or close error is returned; a partially written regular file is removed so
+// it cannot be mistaken for a complete report. Paths that are not regular
+// files (a symlink, FIFO or device such as /dev/stdout) are never removed.
+func writeReportFile(path string, write func(io.Writer) error) (err error) {
+	f, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("creating %q: %w", path, err)
+	}
+	defer func() {
+		if cerr := f.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("closing %q: %w", path, cerr)
+		}
+		if err != nil {
+			// Best effort; a failed removal must not replace the original error.
+			if fi, serr := os.Lstat(path); serr == nil && fi.Mode().IsRegular() {
+				_ = os.Remove(path)
+			}
+		}
+	}()
+
+	if werr := write(f); werr != nil {
+		return fmt.Errorf("writing %q: %w", path, werr)
+	}
+	return nil
 }

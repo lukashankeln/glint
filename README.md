@@ -280,9 +280,11 @@ All fields except `rule_id`, `severity`, and `message` are optional.
 ```
 glint lint [path...] [flags]
   --config string        config file (default: glint.yaml)
-  --format string        text | json | sarif | github-actions
+  --format string        text | json | sarif | junit | github-actions
   --fail-on string       comma-separated severities (default: from config)
   --output string        write output to file
+  --output-sarif string  write SARIF report to file
+  --output-junit string  write JUnit report to file
   --output-json string   write JSON summary to file (for CI step capture)
   --only-rules string    run only these rule IDs
   --skip-rules string    skip these rule IDs
@@ -305,6 +307,8 @@ glint init [path]
 **Exit codes:** `0` = clean, `1` = violations found, `2` = pipeline error
 
 An app that fails to render is a `glint/render-error` violation in `glint lint`, and `glint render` exits `2` if any app fails. With `--output`, an app whose file cannot be fully written also makes `glint render` exit `2`, and the partial file is removed.
+
+In `glint lint`, a report file (`--output`, `--output-sarif`, `--output-junit`, `--output-json`) that cannot be fully written or closed makes the run exit `2` regardless of `fail_on`, and a partially written regular file is removed.
 
 ---
 
