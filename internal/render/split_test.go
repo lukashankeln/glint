@@ -765,6 +765,76 @@ func TestSplitYAML_NonJSONScalarsMatchOldPipeline(t *testing.T) {
 	}
 }
 
+// TestSplitYAML_NumericAndNullKeysMatchOldPipeline pins the naming of numeric
+// and null mapping keys to sigs.k8s.io/yaml: integers keep full precision,
+// floats use the shortest float32 form, and null and uint64 keys reject the
+// document (it is skipped). Number values stay float64 either way.
+func TestSplitYAML_NumericAndNullKeysMatchOldPipeline(t *testing.T) {
+	bodies := []string{
+		"  12345678901: 1\n", "  16777217: 1\n", "  9223372036854775807: 1\n",
+		"  -9223372036854775808: 1\n", "  !!int 12345678901: 1\n", "  !!int \"12345678901\": 1\n",
+		"  1.00000001: 1\n", "  3.14159265: 1\n", "  !!float 12345678901: 1\n",
+		"  18446744073709551616: 1\n", "  -9223372036854775809: 1\n",
+		"  1e40: 1\n", "  1e-50: 1\n",
+		// uint64 and null keys: rejected by the old pipeline.
+		"  9223372036854775808: 1\n", "  0xFFFFFFFFFFFFFFFF: 1\n", "  !!int 0x8000000000000000: 1\n",
+		"  ~: 1\n", "  null: 1\n",
+		// Rows that already matched.
+		"  0x1F: 1\n", "  0o17: 1\n", "  017: 1\n", "  0b101: 1\n", "  -0b101: 1\n",
+		"  +12: 1\n", "  1_000: 1\n", "  1_0.5: 1\n", "  1e3: 1\n", "  0.1: 1\n",
+		"  .5: 1\n", "  1.: 1\n", "  -0: 1\n", "  0: 1\n", "  !!float 1: 1\n",
+		"  !!float 0x10: 1\n", "  !!int 07: 1\n", "  \"12\": 1\n", "  !!str 12: 1\n",
+		"  true: 1\n", "  yes: 1\n", "  .inf: 1\n", "  -.inf: 1\n", "  .nan: 1\n",
+		"  !!int 1.5: 1\n", "  !!int -9223372036854775809: 1\n", "  !!null x: 1\n",
+		// Aliased keys, and an integer key copied through a merge.
+		"  &a 12345678901 : 1\n  b: {*a : 2}\n",
+		"  &n ~ : 1\n  b: {*n : 2}\n",
+		"  m: &m {12345678901: x}\n  q: {<<: *m}\n",
+		// Values stay float64.
+		"  v: 12345678901\n", "  v: 9223372036854775808\n",
+		"  a: &a 12345678901\n  v: [*a]\n",
+	}
+	good := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: good\n"
+	for _, body := range bodies {
+		t.Run(body, func(t *testing.T) {
+			doc := mergeDocHeader + "data:\n" + body
+			want, oldErr := oldPipelineObjectErr([]byte(doc))
+			if oldErr != nil {
+				manifests, err := SplitYAML([]byte(good+"---\n"+doc), "app", "file.yaml", false)
+				require.NoError(t, err)
+				require.Len(t, manifests, 1)
+				assert.Equal(t, "good", manifests[0].Name)
+				return
+			}
+			manifests, err := SplitYAML([]byte(doc), "app", "file.yaml", false)
+			require.NoError(t, err)
+			require.Len(t, manifests, 1)
+			assert.Equal(t, want, manifests[0].Object)
+		})
+	}
+}
+
+func TestNodeToValue_UnsupportedMapKey(t *testing.T) {
+	for _, doc := range []string{"~: 1\n", "9223372036854775808: 1\n"} {
+		_, err := nodeToValue(parseNode(t, doc))
+		require.ErrorIs(t, err, errUnsupportedMapKey, doc)
+	}
+}
+
+// TestNodeToValue_IntegersAreFloat64 guards that the int64/uint64 convert
+// returns for an !!int never reaches a value.
+func TestNodeToValue_IntegersAreFloat64(t *testing.T) {
+	v, err := nodeToValue(parseNode(t, "p: 12345678901\na: &a 7\nal: *a\ns: [1, *a]\nu: 9223372036854775808\n"))
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{
+		"p": float64(12345678901), "a": float64(7), "al": float64(7),
+		"s": []any{float64(1), float64(7)}, "u": float64(1 << 63),
+	}, v)
+	root, err := nodeToValue(parseNode(t, "12345678901\n"))
+	require.NoError(t, err)
+	assert.Equal(t, float64(12345678901), root)
+}
+
 // TestSplitYAML_BinaryKeyCollisionKeepsLast pins a known difference from the
 // old pipeline: two !!binary keys that decode to the same string after
 // invalid bytes become U+FFFD keep the later one in document order (the old

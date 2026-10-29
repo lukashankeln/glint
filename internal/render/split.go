@@ -8,6 +8,7 @@ import (
 	"io"
 	"maps"
 	"math"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -162,6 +163,12 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 // ".inf", "-.inf" or ".nan". A document whose root is such a scalar is skipped
 // because conversion fails, rather than for not being a mapping.
 //
+// Other non-string keys are named like sigs.k8s.io/yaml names them: an integer
+// in decimal at full int64 precision, a float with the shortest float32
+// representation (so 1e40 is ".inf"), a bool "true" or "false". A null key
+// (~, null) or an integer above the int64 range (a uint64) rejects the
+// document. A number used as a value is always a float64.
+//
 // Merge keys (<<) follow go-yaml v2 semantics: mapping pairs are processed in
 // order, so a merge overwrites explicit keys before it and is overwritten by
 // explicit keys after it. A merge value must be a mapping, an alias to a
@@ -231,7 +238,23 @@ func nodeToValue(n *yaml.Node) (any, error) {
 func nodeToValueBudget(n *yaml.Node, aliasBudget, indentBudget *int) (any, error) {
 	c := converter{expanding: map[*yaml.Node]bool{}, anchors: map[*yaml.Node]bool{},
 		aliasBytesLeft: aliasBudget, indentBytesLeft: indentBudget}
-	return c.convert(n)
+	v, err := c.convert(n)
+	if err != nil {
+		return nil, err
+	}
+	return intToFloat(v), nil
+}
+
+// intToFloat turns the int64/uint64 convert returns for an !!int scalar into
+// the float64 every number value has, as after the old JSON round trip.
+func intToFloat(v any) any {
+	switch i := v.(type) {
+	case int64:
+		return float64(i)
+	case uint64:
+		return float64(i)
+	}
+	return v
 }
 
 // converter carries the per-call state of nodeToValue. expanding holds the
@@ -329,7 +352,7 @@ const (
 	// part: the builder header and the boxed string, with margin.
 	aliasedBinaryCost = 64
 	// aliasedKeyFormatCost is charged per aliased mapping key that is not a
-	// string and so is formatted with fmt.Sprint.
+	// string and so is formatted by formatKey.
 	aliasedKeyFormatCost = 64
 	// aliasedMergeEntryCost is charged per entry a merge copies out of an
 	// aliased mapping (or into aliased content): the outer mapping is not
@@ -531,6 +554,9 @@ var (
 	errNonFiniteFloat = errors.New("unsupported value: non-finite float")
 	errInvalidBinary  = errors.New("!!binary value contains invalid base64 data")
 	errInvalidNull    = errors.New("!!null value is not a null literal")
+	// errUnsupportedMapKey rejects a null or uint64 mapping key, which
+	// sigs.k8s.io/yaml cannot name.
+	errUnsupportedMapKey = errors.New("unsupported map key")
 )
 
 // nullLiterals are the scalars go-yaml v2 resolves as null (YAML 1.1), in any
@@ -539,12 +565,15 @@ var nullLiterals = map[string]bool{"": true, "~": true, "null": true, "Null": tr
 
 // convertValue is convert for a value position (mapping value, sequence
 // element, document root): a non-finite float there is an error, because JSON
-// cannot carry it. Keys go through convert and are named by formatKey.
+// cannot carry it. An integer (int64/uint64 from convert) becomes a float64,
+// as every number value is after the old JSON round trip. Keys go through
+// convert and are named by formatKey, which keeps integer precision.
 func (c *converter) convertValue(n *yaml.Node) (any, error) {
 	v, err := c.convert(n)
 	if err != nil {
 		return nil, err
 	}
+	v = intToFloat(v)
 	if f, ok := v.(float64); ok && (math.IsInf(f, 0) || math.IsNaN(f)) {
 		return nil, fmt.Errorf("%w: %v", errNonFiniteFloat, f)
 	}
@@ -577,20 +606,29 @@ func decodeBinary(value string) (string, error) {
 	return b.String(), nil
 }
 
-// formatKey names a non-string mapping key. Non-finite floats use the YAML
-// spellings sigs.k8s.io/yaml gives them.
-func formatKey(k any) string {
-	if f, ok := k.(float64); ok {
-		switch {
-		case math.IsInf(f, 1):
-			return ".inf"
-		case math.IsInf(f, -1):
-			return "-.inf"
-		case math.IsNaN(f):
-			return ".nan"
+// formatKey names a non-string mapping key as sigs.k8s.io/yaml does: an
+// integer in decimal, a float with the shortest float32 representation
+// (non-finite ones spelled ".inf", "-.inf", ".nan"), a bool "true" or "false".
+// Anything else (null, a uint64) is errUnsupportedMapKey.
+func formatKey(k any) (string, error) {
+	switch k := k.(type) {
+	case int64:
+		return strconv.FormatInt(k, 10), nil
+	case float64:
+		switch s := strconv.FormatFloat(k, 'g', -1, 32); s {
+		case "+Inf":
+			return ".inf", nil
+		case "-Inf":
+			return "-.inf", nil
+		case "NaN":
+			return ".nan", nil
+		default:
+			return s, nil
 		}
+	case bool:
+		return strconv.FormatBool(k), nil
 	}
-	return fmt.Sprint(k)
+	return "", fmt.Errorf("%w: %T", errUnsupportedMapKey, k)
 }
 
 var errMergeValue = errors.New("map merge requires map or sequence of maps as the value")
@@ -689,7 +727,10 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 						return nil, err
 					}
 				}
-				ks = formatKey(k)
+				var err error
+				if ks, err = formatKey(k); err != nil {
+					return nil, err
+				}
 			}
 			v, err := c.convertValue(n.Content[i+1])
 			if err != nil {
@@ -768,7 +809,28 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 				return nil, err
 			}
 			return b, nil
-		case "!!int", "!!float":
+		case "!!int":
+			if c.aliasDepth > 0 {
+				if err := c.charge(aliasedDecodeCost + 2*len(n.Value)); err != nil {
+					return nil, err
+				}
+			}
+			// One decode keeps the charge above accurate; yaml.v3 resolves
+			// an !!int to int, int64 or uint64 and rejects a non-integer.
+			var v any
+			if err := n.Decode(&v); err != nil {
+				return nil, err
+			}
+			switch i := v.(type) {
+			case int:
+				return int64(i), nil
+			case int64:
+				return i, nil
+			case uint64:
+				return i, nil
+			}
+			return nil, fmt.Errorf("cannot decode !!int %q as an integer", n.Value)
+		case "!!float":
 			if c.aliasDepth > 0 {
 				if err := c.charge(aliasedDecodeCost + 2*len(n.Value)); err != nil {
 					return nil, err
