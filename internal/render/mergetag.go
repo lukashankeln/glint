@@ -54,16 +54,27 @@ func (c *sourceCursor) prepare() {
 	}
 }
 
+// decodeUTF16 transcodes in one pass, so the result is the only copy: at most
+// 3 bytes of UTF-8 per 2 bytes of input. A lone surrogate becomes U+FFFD.
 func decodeUTF16(b []byte, bigEndian bool) []byte {
-	u := make([]uint16, 0, len(b)/2)
-	for i := 0; i+1 < len(b); i += 2 {
+	unit := func(i int) rune {
 		if bigEndian {
-			u = append(u, uint16(b[i])<<8|uint16(b[i+1]))
-		} else {
-			u = append(u, uint16(b[i+1])<<8|uint16(b[i]))
+			return rune(b[i])<<8 | rune(b[i+1])
 		}
+		return rune(b[i+1])<<8 | rune(b[i])
 	}
-	return []byte(string(utf16.Decode(u)))
+	out := make([]byte, 0, len(b)/2*3)
+	for i := 0; i+1 < len(b); i += 2 {
+		r := unit(i)
+		if utf16.IsSurrogate(r) && i+3 < len(b) {
+			if d := utf16.DecodeRune(r, unit(i+2)); d != utf8.RuneError {
+				r = d
+				i += 2
+			}
+		}
+		out = utf8.AppendRune(out, r)
+	}
+	return out
 }
 
 // peek returns the rune at the cursor, or -1 at the end of the text.
