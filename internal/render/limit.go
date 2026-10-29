@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
-	"os"
 	"os/exec"
+
+	"github.com/lukashankeln/glint/internal/fsutil"
 )
 
 // errOutputLimit is returned by cappedBuffer.Write and wrapped by the
@@ -19,32 +19,16 @@ var execCommandContext = exec.CommandContext
 // stderrKeep is how much subprocess stderr truncatingWriter retains.
 const stderrKeep = 64 << 10
 
-// readFileCapped reads path, failing with errStreamTooLarge if it holds more
-// than limit bytes. Non-regular files (e.g. a symlink to /dev/zero) are read
-// through a limit reader so they cannot exhaust memory either.
+// readFileCapped reads path through fsutil.ReadFileCapped. A file over limit
+// returns an error wrapping both errStreamTooLarge and fsutil.ErrTooLarge; a
+// non-regular file (e.g. a symlink to /dev/zero or a FIFO) wraps
+// fsutil.ErrNotRegular and is never opened.
 func readFileCapped(path string, limit int) ([]byte, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
+	data, err := fsutil.ReadFileCapped(path, limit)
+	if errors.Is(err, fsutil.ErrTooLarge) {
+		return nil, fmt.Errorf("%w: %w", errStreamTooLarge, err)
 	}
-	defer f.Close()
-
-	info, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if info.Mode().IsRegular() && info.Size() > int64(limit) {
-		return nil, fmt.Errorf("file is %d bytes, over the %d-byte limit: %w",
-			info.Size(), limit, errStreamTooLarge)
-	}
-	data, err := io.ReadAll(io.LimitReader(f, int64(limit)+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(data) > limit {
-		return nil, fmt.Errorf("file is over the %d-byte limit: %w", limit, errStreamTooLarge)
-	}
-	return data, nil
+	return data, err
 }
 
 // cappedBuffer collects writes up to limit bytes. The buffer is a named field,
