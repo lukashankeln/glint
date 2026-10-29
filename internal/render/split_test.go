@@ -833,6 +833,10 @@ func TestNodeToValue_IntegersAreFloat64(t *testing.T) {
 	root, err := nodeToValue(parseNode(t, "12345678901\n"))
 	require.NoError(t, err)
 	assert.Equal(t, float64(12345678901), root)
+	// A bare scalar root (not a document) skips convertValue.
+	bare, err := nodeToValue(&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: "12345678901"})
+	require.NoError(t, err)
+	assert.Equal(t, float64(12345678901), bare)
 }
 
 // TestSplitYAML_BinaryKeyCollisionKeepsLast pins a known difference from the
