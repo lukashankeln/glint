@@ -1229,11 +1229,14 @@ func countNodes(n *yaml.Node) int {
 
 func leadingSpaces(b []byte) int {
 	total := 0
-	// Split on every break go-yaml v2 can write raw (LF, CR, NEL, LS, PS).
+	// Split on every YAML line break (LF, CR, NEL, LS, PS). Only LF, LS and PS
+	// reach the output raw (CR is escaped, NEL becomes a space), but counting
+	// all five only makes the bound stricter. The set is spelled out rather
+	// than reusing isBreakRune, so a break dropped there cannot also hide here.
 	atStart := true
 	for _, r := range string(b) {
 		switch {
-		case isBreakRune(r):
+		case r == '\n' || r == '\r' || r == '\u0085' || r == '\u2028' || r == '\u2029':
 			atStart = true
 		case r == ' ' && atStart:
 			total++
@@ -1273,6 +1276,7 @@ func TestIndentCharges_BoundOutputIndentation(t *testing.T) {
 		"long-keys":         chain(30, "{a: ", "}", `{"`+strings.Repeat("k", 135)+`": v}`),
 		"long-keys-nested":  chain(30, "{"+strings.Repeat("k", 135)+": ", "}", "v"),
 		"multiline-keys":    chain(30, "{a: ", "}", `{"two\nlines": v, "x\ry": w}`),
+		"many-break-keys":   chain(30, "{a: ", "}", `{"a\nb": v, "c\nd": v, "e\nf": v, "g\nh": v, "i\nj": v, "k\nl": v}`),
 	}
 	for name, flow := range cases {
 		t.Run(name, func(t *testing.T) {
