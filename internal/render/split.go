@@ -33,8 +33,9 @@ var (
 // A stream over maxStreamBytes, or with more than maxStreamDocuments
 // documents (empty ones included), returns an error wrapping errStreamTooLarge
 // or errTooManyDocuments. A document that fails to decode returns an error.
-// A document that decodes but fails conversion (e.g. alias limits, invalid map
-// keys, self-referential or unknown anchors) is skipped with a debug log.
+// A document that decodes but fails conversion (e.g. alias limits, the
+// nesting/indentation budget, invalid map keys, self-referential or unknown
+// anchors) is skipped with a debug log.
 func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([]manifest.Manifest, error) {
 	if len(data) > maxStreamBytes {
 		return nil, fmt.Errorf("YAML stream is %d bytes, over the %d-byte limit: %w",
@@ -45,6 +46,8 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 
 	// One alias byte budget for the whole stream: see nodeToValue.
 	budget := aliasByteBudget(len(data))
+	// And one nesting/indentation budget, likewise shared.
+	indentBudget := indentByteBudget(len(data))
 
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	docCount := 0
@@ -76,12 +79,12 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 		// library: nodeToValue walks the tree once in memory, avoiding the
 		// yaml.v2-decode + json.Marshal + json.Unmarshal chain that
 		// sigs.k8s.io/yaml performs internally on every document.
-		// Only accepted documents consume the shared alias budget: a rejected
+		// Only accepted documents consume the shared budgets: a rejected
 		// document's charges are refunded.
-		budgetBefore := budget
-		val, err := nodeToValueBudget(&node, &budget)
+		budgetBefore, indentBefore := budget, indentBudget
+		val, err := nodeToValueBudget(&node, &budget, &indentBudget)
 		if err != nil {
-			budget = budgetBefore
+			budget, indentBudget = budgetBefore, indentBefore
 			slog.Debug("skipping document", "app", appName, "err", err)
 			continue
 		}
@@ -183,19 +186,36 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 // be the one that is skipped. A rejected document's charges are
 // refunded, so only accepted documents consume the shared budget.
 //
+// Nesting is bounded separately, because the output writers (YAML and JSON)
+// indent every line by its depth, so a deeply nested document, aliased or not,
+// writes output quadratic in its depth, and go-yaml v2 (behind
+// sigs.k8s.io/yaml) also repeats that indentation on every line of a multi-line
+// string and wraps long strings at spaces. Every mapping is charged
+// indentCost per pair per level of depth, every sequence indentCost per element
+// per level, and every scalar (keys included) indentCost per level for each
+// extra line it may write: each non-blank line after a newline (and the first
+// line of a string that contains one) and each space. This is separate from, and in addition to, the alias charges above.
+// Exceeding it fails with errExcessiveNesting. The budget is
+// indentByteBudget(len(data)) in SplitYAML (floor indentBytesFloor, ceiling
+// indentBytesCeiling), shared across a stream and refunded for a rejected
+// document like the alias budget; nodeToValue uses the floor.
+//
 // An alias whose anchor is defined outside the given tree (yaml.v3 keeps
 // anchors across Decode calls on one stream) is an "unknown anchor" error, as
 // when each document was parsed alone. A mapping key that converts to a
 // mapping or sequence is an "invalid map key" error, as in sigs.k8s.io/yaml.
 func nodeToValue(n *yaml.Node) (any, error) {
-	budget := aliasByteBudget(0)
-	return nodeToValueBudget(n, &budget)
+	aliasBudget := aliasByteBudget(0)
+	indentBudget := indentByteBudget(0)
+	return nodeToValueBudget(n, &aliasBudget, &indentBudget)
 }
 
-// nodeToValueBudget is nodeToValue with a caller-supplied alias byte budget,
-// decremented in place so that several calls can share it.
-func nodeToValueBudget(n *yaml.Node, budget *int) (any, error) {
-	c := converter{expanding: map[*yaml.Node]bool{}, anchors: map[*yaml.Node]bool{}, aliasBytesLeft: budget}
+// nodeToValueBudget is nodeToValue with caller-supplied alias and
+// nesting/indentation byte budgets, decremented in place so that several calls
+// can share them.
+func nodeToValueBudget(n *yaml.Node, aliasBudget, indentBudget *int) (any, error) {
+	c := converter{expanding: map[*yaml.Node]bool{}, anchors: map[*yaml.Node]bool{},
+		aliasBytesLeft: aliasBudget, indentBytesLeft: indentBudget}
 	return c.convert(n)
 }
 
@@ -211,7 +231,8 @@ func nodeToValueBudget(n *yaml.Node, budget *int) (any, error) {
 // aliasCount and aliasDepth mirror the fields of the same names on yaml.v3's
 // decoder and drive the excessive-aliasing guard.
 // aliasBytesLeft is the remaining alias byte budget, possibly shared with other
-// converters (one per document of a stream).
+// converters (one per document of a stream); indentBytesLeft likewise for the
+// nesting/indentation budget.
 type converter struct {
 	expanding   map[*yaml.Node]bool
 	anchors     map[*yaml.Node]bool // anchored nodes reached so far in this document
@@ -220,7 +241,8 @@ type converter struct {
 	aliasDepth  int
 	depth       int // current mapping/sequence nesting, continuing across aliases
 
-	aliasBytesLeft *int
+	aliasBytesLeft  *int
+	indentBytesLeft *int
 }
 
 // yaml11Bools holds the go-yaml v2 (YAML 1.1) bool literals that yaml.v3's
@@ -237,6 +259,8 @@ const nonPlainStyle = yaml.TaggedStyle | yaml.DoubleQuotedStyle | yaml.SingleQuo
 	yaml.LiteralStyle | yaml.FoldedStyle
 
 var errExcessiveAliasing = errors.New("document contains excessive aliasing")
+
+var errExcessiveNesting = errors.New("document nests too deeply for its size")
 
 var errExcessiveAliasExpansion = errors.New("document expands too many bytes through aliases")
 
@@ -298,7 +322,54 @@ const (
 	aliasedMergeEntryCost = 192
 	// aliasedIndentCost is charged per level of nesting of an aliased node.
 	aliasedIndentCost = 2
+
+	// indentBytesFloor is the minimum nesting/indentation budget.
+	indentBytesFloor = 1 << 20
+	// indentBytesPerInputByte scales that budget with the size of the input.
+	indentBytesPerInputByte = 10
+	// indentBytesCeiling caps the scaled budget. It is higher than the alias
+	// ceiling because non-aliased indentation is ordinary output: a legitimate
+	// stream near the 64 MiB input cap can need tens of MiB of indentation,
+	// mostly per-space charges on prose.
+	indentBytesCeiling = 256 << 20
+	// indentCost is charged per level of depth for each line a node adds to the
+	// output (the indentation the writers put on it).
+	indentCost = 2
 )
+
+// indentByteBudget returns the nesting/indentation budget for an input of
+// inputLen bytes.
+func indentByteBudget(inputLen int) int {
+	return min(max(indentBytesFloor, indentBytesPerInputByte*inputLen), indentBytesCeiling)
+}
+
+// chargeIndent deducts n bytes from the nesting/indentation budget, failing
+// once it is overdrawn.
+func (c *converter) chargeIndent(n int) error {
+	*c.indentBytesLeft -= n
+	if *c.indentBytesLeft < 0 {
+		return errExcessiveNesting
+	}
+	return nil
+}
+
+// extraLines counts the lines a string can add to the output beyond the key's
+// own line that carry indentation: each line that starts after a newline and is
+// not blank (a trailing newline starts nothing), plus each space, where the
+// writer may wrap. A string with a newline is written as a literal block whose
+// first line also starts on a new line, so that line counts too.
+func extraLines(s string) int {
+	n := strings.Count(s, " ")
+	if len(s) > 0 && s[0] != '\n' && strings.Contains(s, "\n") {
+		n++
+	}
+	for i := 0; i+1 < len(s); i++ {
+		if s[i] == '\n' && s[i+1] != '\n' {
+			n++
+		}
+	}
+	return n
+}
 
 // aliasByteBudget returns the alias byte budget for an input of inputLen bytes.
 func aliasByteBudget(inputLen int) int {
@@ -527,6 +598,9 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 		return c.expand(n)
 
 	case yaml.MappingNode:
+		if err := c.chargeIndent(indentCost * c.depth * (len(n.Content) / 2)); err != nil {
+			return nil, err
+		}
 		if c.aliasDepth > 0 {
 			if err := c.charge(aliasedMapCost + aliasedEntryCost*(len(n.Content)/2) + aliasedIndentCost*c.depth); err != nil {
 				return nil, err
@@ -568,6 +642,9 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 		return m, nil
 
 	case yaml.SequenceNode:
+		if err := c.chargeIndent(indentCost * c.depth * len(n.Content)); err != nil {
+			return nil, err
+		}
 		if c.aliasDepth > 0 {
 			if err := c.charge(aliasedSeqCost + aliasedElemCost*len(n.Content) + aliasedIndentCost*c.depth); err != nil {
 				return nil, err
@@ -586,6 +663,11 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 		return s, nil
 
 	case yaml.ScalarNode:
+		if c.depth > 0 {
+			if err := c.chargeIndent(indentCost * c.depth * extraLines(n.Value)); err != nil {
+				return nil, err
+			}
+		}
 		if c.aliasDepth > 0 {
 			if err := c.charge(len(n.Value) + aliasedScalarCost + aliasedIndentCost*c.depth); err != nil {
 				return nil, err
