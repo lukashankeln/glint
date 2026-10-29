@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"log/slog"
 
@@ -58,13 +59,15 @@ Use --output <dir> to write each app to <dir>/<appname>.yaml.`,
 
 			rendered := 0
 			totalManifests := 0
-			for _, r := range renderAppsParallel(cmd.Context(), apps, cfg) {
+			var failed []string
+			for _, r := range renderApps(cmd.Context(), apps, cfg) {
 				if cmd.Context().Err() != nil {
 					return cmd.Context().Err()
 				}
 
 				if r.err != nil {
-					slog.Warn("render failed, skipping", "app", r.app.Name, "err", r.err)
+					slog.Warn("render failed", "app", r.app.Name, "err", r.err)
+					failed = append(failed, r.app.Name)
 					continue
 				}
 
@@ -90,6 +93,9 @@ Use --output <dir> to write each app to <dir>/<appname>.yaml.`,
 			}
 			slog.Info("rendering complete", "apps", rendered, "manifests", totalManifests)
 
+			if len(failed) > 0 {
+				return fmt.Errorf("rendering failed for %d app(s): %s", len(failed), strings.Join(failed, ", "))
+			}
 			return nil
 		},
 	}

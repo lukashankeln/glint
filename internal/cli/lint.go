@@ -92,7 +92,7 @@ func newLintCmd() *cobra.Command {
 					return cmd.Context().Err()
 				}
 				if r.err != nil {
-					slog.Warn("render failed, skipping", "app", r.app.Name, "err", r.err)
+					slog.Warn("render failed, reporting as error", "app", r.app.Name, "err", r.err)
 					if v, ok := renderErrorViolation(r); ok {
 						renderViolations = append(renderViolations, v)
 					}
@@ -265,22 +265,33 @@ func splitCSV2(s string) []string {
 	return out
 }
 
-// renderApps is renderAppsParallel, a variable only so a test can inject a
-// render error that real input cannot produce; such tests must not run in
-// parallel.
+// renderApps is renderAppsParallel, used by lint and render. It is a variable
+// only so a test can inject render results that real input cannot produce;
+// tests that replace it must not run in parallel.
 var renderApps = renderAppsParallel
 
 // renderErrorViolation reports a render failure that must not pass silently:
-// a merge key glint could not resolve the way Kubernetes would means the
-// app's manifests cannot be validated, so it is an error rather than a skip.
+// an app that could not be rendered cannot be validated, so the failure is an
+// error-severity violation rather than a skip. It returns false only when the
+// render succeeded. A merge key glint could not resolve keeps the more
+// specific glint/parse-error ID; every other failure is glint/render-error.
 func renderErrorViolation(r renderResult) (rules.Violation, bool) {
-	if !errors.Is(r.err, render.ErrAmbiguousMergeKey) {
+	if r.err == nil {
 		return rules.Violation{}, false
 	}
+	if errors.Is(r.err, render.ErrAmbiguousMergeKey) {
+		return rules.Violation{
+			RuleID:   "glint/parse-error",
+			Severity: rules.SeverityError,
+			Message:  fmt.Sprintf("app %q could not be parsed and cannot be validated: %v", r.app.Name, r.err),
+			FilePath: r.app.RootPath,
+			Source:   "render",
+		}, true
+	}
 	return rules.Violation{
-		RuleID:   "glint/parse-error",
+		RuleID:   "glint/render-error",
 		Severity: rules.SeverityError,
-		Message:  fmt.Sprintf("app %q could not be parsed and cannot be validated: %v", r.app.Name, r.err),
+		Message:  fmt.Sprintf("app %q could not be rendered and cannot be validated: %v", r.app.Name, r.err),
 		FilePath: r.app.RootPath,
 		Source:   "render",
 	}, true

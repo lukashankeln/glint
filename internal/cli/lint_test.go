@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -34,17 +35,27 @@ func TestRenderErrorViolation_AmbiguousMergeKey(t *testing.T) {
 	assert.True(t, failsThreshold([]rules.Violation{v}, []string{"error"}))
 }
 
-func TestRenderErrorViolation_OtherErrorsStaySkips(t *testing.T) {
-	app := discovery.DiscoveredApp{Name: "web"}
-	for _, err := range []error{nil, errors.New("helm template failed")} {
-		_, ok := renderErrorViolation(renderResult{app: app, err: err})
-		assert.False(t, ok, "err=%v", err)
-	}
+func TestRenderErrorViolation_OtherErrorsReported(t *testing.T) {
+	app := discovery.DiscoveredApp{Name: "web", RootPath: "/repo/apps/web"}
+
+	_, ok := renderErrorViolation(renderResult{app: app})
+	assert.False(t, ok)
+
+	v, ok := renderErrorViolation(renderResult{app: app, err: errors.New("helm template failed")})
+	require.True(t, ok)
+	assert.Equal(t, "glint/render-error", v.RuleID)
+	assert.Equal(t, rules.SeverityError, v.Severity)
+	assert.Equal(t, "render", v.Source)
+	assert.Equal(t, "/repo/apps/web", v.FilePath)
+	assert.Contains(t, v.Message, `app "web"`)
+	assert.Contains(t, v.Message, "helm template failed")
+	assert.True(t, failsThreshold([]rules.Violation{v}, []string{"error"}))
 }
 
 // TestLint_AmbiguousMergeKeyFailsRun runs the lint command end to end with a
 // render that fails with ErrAmbiguousMergeKey: the run must fail with a
-// glint/parse-error violation, while any other render error stays a skip.
+// glint/parse-error violation, while any other render error fails it with a
+// glint/render-error violation.
 func TestLint_AmbiguousMergeKeyFailsRun(t *testing.T) {
 	dir := t.TempDir()
 	appDir := filepath.Join(dir, "apps", "web")
@@ -58,7 +69,7 @@ func TestLint_AmbiguousMergeKeyFailsRun(t *testing.T) {
 	t.Cleanup(func() { cfgFile, renderApps = oldCfg, oldRender })
 	cfgFile = cfgPath
 
-	run := func(renderErr error) (string, error) {
+	run := func(renderErr error, extraArgs ...string) (string, error) {
 		renderApps = func(_ context.Context, apps []discovery.DiscoveredApp, _ *config.Config) []renderResult {
 			out := make([]renderResult, len(apps))
 			for i, a := range apps {
@@ -70,7 +81,7 @@ func TestLint_AmbiguousMergeKeyFailsRun(t *testing.T) {
 		cmd := newLintCmd()
 		cmd.SetOut(&buf)
 		cmd.SetErr(&buf)
-		cmd.SetArgs([]string{"--format", "text", dir})
+		cmd.SetArgs(append([]string{"--format", "text", dir}, extraArgs...))
 		err := cmd.Execute()
 		return buf.String(), err
 	}
@@ -83,6 +94,52 @@ func TestLint_AmbiguousMergeKeyFailsRun(t *testing.T) {
 
 	out, err = run(errors.New("helm template failed"))
 	require.NotContains(t, out, "No apps discovered")
-	require.NoError(t, err)
+	require.ErrorAs(t, err, &vf)
+	assert.Contains(t, out, "glint/render-error")
 	assert.NotContains(t, out, "glint/parse-error")
+
+	out, err = run(errors.New("helm template failed"), "--skip-rules", "glint/render-error")
+	require.NotContains(t, out, "No apps discovered")
+	require.NoError(t, err)
+	assert.NotContains(t, out, "glint/render-error")
+}
+
+// TestLint_RealRenderErrorFailsRun lints malformed plain YAML without
+// injecting render results: the app must fail to render and be reported as a
+// glint/render-error violation, not as a discovery problem.
+func TestLint_RealRenderErrorFailsRun(t *testing.T) {
+	dir := t.TempDir()
+	appDir := filepath.Join(dir, "apps", "web")
+	require.NoError(t, os.MkdirAll(appDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(appDir, "bad.yaml"), []byte("key: [unclosed\n"), 0o644))
+	cfgPath := filepath.Join(dir, "glint.yaml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte("fail_on: [error]\n"), 0o644))
+
+	oldCfg := cfgFile
+	t.Cleanup(func() { cfgFile = oldCfg })
+	cfgFile = cfgPath
+
+	var buf bytes.Buffer
+	cmd := newLintCmd()
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	cmd.SetArgs([]string{"--format", "text", dir})
+	err := cmd.Execute()
+
+	out := buf.String()
+	require.NotContains(t, out, "No apps discovered")
+	var vf *ViolationsFoundError
+	require.ErrorAs(t, err, &vf)
+
+	var renderErrs, discoveryLines int
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "[ERROR] discovery ") {
+			discoveryLines++
+		}
+		if strings.HasPrefix(line, "[ERROR] render ") && strings.HasSuffix(line, "[glint/render-error]") {
+			renderErrs++
+		}
+	}
+	assert.Equal(t, 1, renderErrs, "output:\n%s", out)
+	assert.Zero(t, discoveryLines, "output:\n%s", out)
 }

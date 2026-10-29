@@ -85,7 +85,7 @@ render:
 
 The helm timeout applies to each render pass of an app, including the
 `discover_api_versions` re-render. When it expires, glint fails that app's
-render with a "timed out" error.
+render with a "timed out" error, which `glint lint` reports as a `glint/render-error` violation.
 
 glint renders offline, so `.Capabilities.APIVersions` only contains the built-in Kubernetes APIs. Charts that gate resources on a CRD (e.g. `monitoring.coreos.com/v1` for ServiceMonitors) either fail or silently omit them. With `discover_api_versions`, glint collects the API versions of every CustomResourceDefinition in the rendered output (from CRD charts, `crds/` directories with `include_crds`, or committed CRD manifests) and renders Helm charts a second time with them. `api_versions` covers CRDs that are installed outside the scanned repository.
 
@@ -100,7 +100,7 @@ render:
 ```
 
 When the kustomize timeout expires, glint fails that app's render with a
-"timed out" error.
+"timed out" error, which `glint lint` reports as a `glint/render-error` violation.
 
 ### Fallback
 
@@ -113,11 +113,13 @@ render:
 
 These limits are built in and not configurable.
 
+An app whose render fails (these limits, YAML decode errors, helm/kustomize errors, timeouts) is reported by `glint lint` as an error-severity `glint/render-error` violation, so with the default `fail_on` the run fails instead of passing with the app unlinted. `glint render` still writes the other apps and exits 2. Unreachable remote charts and other network failures fail the app's render the same way; use `--skip-rules glint/render-error` to opt out deliberately.
+
 - Each YAML stream (one raw manifest file, or one helm/kustomize render) is limited to 64 MiB and 10,000 documents. Exceeding either is an error for that app.
 - helm/kustomize subprocess stdout is capped at the same 64 MiB; the render fails with a limit error. Subprocess stderr shown in errors is truncated at 64 KiB.
 - YAML anchors/aliases: alias expansion within a stream shares a memory budget of `max(1 MiB, 10 × the stream size)`, capped at 64 MiB. A document whose aliases exceed it, or that trips the excessive-aliasing heuristic, is skipped (logged at debug level) from both render output and linting, rather than failing the app.
 - Nesting: a document's nesting depth shares a budget of `max(1 MiB, 10 × the stream size)`, capped at 256 MiB, per stream. It approximates the indentation `glint render` writes (for YAML; JSON output is about twice that), including the repeated indentation of multi-line and long strings in deeply nested documents. A document over it is skipped (logged at debug level) from both render output and linting, like the alias limits.
-- Merge keys: a quoted or block `"<<"` mapping key whose `!` tag cannot be resolved from the source is an error for that app, rather than being guessed: `glint lint` reports it as an error-severity `glint/parse-error` violation, so with the default `fail_on` the run fails rather than passing with that app unlinted.
+- Merge keys: a quoted or block `"<<"` mapping key whose `!` tag cannot be resolved from the source is an error for that app, rather than being guessed: `glint lint` reports it as an error-severity `glint/parse-error` violation (rather than `glint/render-error`), like any other app render failure.
 
 Caveats: limits apply per stream, not per app or per run. They bound memory, but plain YAML can still use tens of times its size in memory. Memory used inside the in-process helm/kustomize libraries is not capped.
 
