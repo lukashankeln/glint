@@ -117,14 +117,14 @@ An app whose render fails (the stream, document-count and subprocess stdout limi
 
 - Each YAML stream (one raw manifest file, or one helm/kustomize render) is limited to 64 MiB and 10,000 documents. Exceeding either is an error for that app.
 - Discovery reads each `*.yaml`/`*.yml` file up to 64 MiB and skips larger files with a warning.
-- Non-regular files (devices, FIFOs, and symlinks to them) are skipped by discovery and are an error for raw manifest and Helm values file reads, and for a local chart's `Chart.yaml` and `.helmignore`. A Helm values file path that is a directory is also an error.
-- Helm values files, `Chart.yaml` and `.helmignore` share the 64 MiB limit; exceeding it fails that app.
+- Non-regular files (devices, FIFOs, and symlinks to them) are skipped by discovery and are an error for raw manifest and Helm values file reads, for a local chart's `Chart.yaml` and `.helmignore`, and for files the in-process kustomize render reads (kustomization files, resources, patches, generator sources). A Helm values file path that is a directory is also an error.
+- Helm values files, `Chart.yaml`, `.helmignore` and the files the in-process kustomize render reads share the 64 MiB limit; exceeding it fails that app. A non-regular or oversized kustomization file is reported as not found rather than as a limit error. These file checks do not cover `render.subprocess_fallback`: the kustomize binary reads files itself and only its stdout is capped.
 - helm/kustomize subprocess stdout is capped at the same 64 MiB; the render fails with a limit error. Subprocess stderr shown in errors is truncated at 64 KiB.
 - YAML anchors/aliases: alias expansion within a stream shares a memory budget of `max(1 MiB, 10 × the stream size)`, capped at 64 MiB. A document whose aliases exceed it, or that trips the excessive-aliasing heuristic, is skipped (logged at debug level) from both render output and linting, rather than failing the app.
 - Nesting: a document's nesting depth shares a budget of `max(1 MiB, 10 × the stream size)`, capped at 256 MiB, per stream. It approximates the indentation `glint render` writes (for YAML; JSON output is about twice that), including the repeated indentation of multi-line and long strings in deeply nested documents. A document over it is skipped (logged at debug level) from both render output and linting, like the alias limits.
 - Merge keys: a quoted or block `"<<"` mapping key whose `!` tag cannot be resolved from the source is an error for that app, rather than being guessed: `glint lint` reports it as an error-severity violation like other render failures, but with the more specific `glint/parse-error` ID, so `--skip-rules glint/render-error` does not silence it.
 
-Caveats: limits apply per stream, not per app or per run. They bound memory, but plain YAML can still use tens of times its size in memory. Memory used inside the in-process helm/kustomize libraries is not capped.
+Caveats: limits apply per stream, not per app or per run. Kustomize file reads are capped per file, but the combined size of many files under the limit is not. They bound memory, but plain YAML can still use tens of times its size in memory. Other memory used inside the in-process helm/kustomize libraries is not capped.
 
 ---
 

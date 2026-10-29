@@ -53,8 +53,20 @@ func (r *KustomizeRenderer) Render(ctx context.Context, app discovery.Discovered
 	return manifests, nil
 }
 
+// cappedFS is the on-disk filesystem with ReadFile bounded by maxStreamBytes
+// and restricted to regular files, so a kustomization file, resource, patch or
+// generator source that is a device, FIFO or huge file fails instead of being
+// read whole. Open is deliberately not wrapped: no kustomize build-path code
+// calls FileSystem.Open (besides ReadFile it only stats and lists). The cap is
+// per file; there is no total budget across files.
+type cappedFS struct{ filesys.FileSystem }
+
+func (c cappedFS) ReadFile(path string) ([]byte, error) {
+	return readFileCapped(path, maxStreamBytes)
+}
+
 func (r *KustomizeRenderer) renderSDK(_ context.Context, app discovery.DiscoveredApp) ([]manifest.Manifest, error) {
-	fSys := filesys.MakeFsOnDisk()
+	fSys := cappedFS{filesys.MakeFsOnDisk()}
 
 	opts := krusty.MakeDefaultOptions()
 	opts.LoadRestrictions = types.LoadRestrictionsNone

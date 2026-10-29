@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/kustomize/kyaml/filesys"
 
 	"github.com/lukashankeln/glint/internal/discovery"
 	"github.com/lukashankeln/glint/internal/fsutil"
@@ -104,5 +105,60 @@ func TestHelmSubprocess_ChartYAMLFIFO(t *testing.T) {
 		return err
 	})
 	require.Error(t, err)
+	assert.True(t, errors.Is(err, fsutil.ErrNotRegular))
+}
+
+func kustApp(t *testing.T, kustomization string) (string, discovery.DiscoveredApp) {
+	t.Helper()
+	if _, err := os.Stat("/dev/zero"); err != nil {
+		t.Skip("/dev/zero not available")
+	}
+	dir := t.TempDir()
+	if kustomization != "" {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "kustomization.yaml"), []byte(kustomization), 0o644))
+	}
+	return dir, discovery.DiscoveredApp{Name: "k", Renderer: discovery.RendererKustomize, RootPath: dir}
+}
+
+func renderKust(t *testing.T, app discovery.DiscoveredApp) error {
+	t.Helper()
+	return withDeadline(t, func() error {
+		_, err := newKustomizeRenderer(defaultCfg()).renderSDK(context.Background(), app)
+		return err
+	})
+}
+
+func TestKustomizeSDK_SymlinkToDevZeroResource(t *testing.T) {
+	dir, app := kustApp(t, "resources:\n- z.yaml\n")
+	require.NoError(t, os.Symlink("/dev/zero", filepath.Join(dir, "z.yaml")))
+	err := renderKust(t, app)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not a regular file")
+}
+
+func TestKustomizeSDK_AbsoluteDevZeroResource(t *testing.T) {
+	_, app := kustApp(t, "resources:\n- /dev/zero\n")
+	err := renderKust(t, app)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not a regular file")
+}
+
+func TestKustomizeSDK_FIFOResource(t *testing.T) {
+	dir, app := kustApp(t, "resources:\n- p.yaml\n")
+	require.NoError(t, syscall.Mkfifo(filepath.Join(dir, "p.yaml"), 0o644))
+	assert.Error(t, renderKust(t, app))
+}
+
+func TestKustomizeSDK_KustomizationSymlinkToDevZero(t *testing.T) {
+	dir, app := kustApp(t, "")
+	require.NoError(t, os.Symlink("/dev/zero", filepath.Join(dir, "kustomization.yaml")))
+	assert.Error(t, renderKust(t, app))
+}
+
+func TestCappedFS_ReadFileSymlinkToDevZero(t *testing.T) {
+	dir, _ := kustApp(t, "")
+	link := filepath.Join(dir, "zero")
+	require.NoError(t, os.Symlink("/dev/zero", link))
+	_, err := cappedFS{filesys.MakeFsOnDisk()}.ReadFile(link)
 	assert.True(t, errors.Is(err, fsutil.ErrNotRegular))
 }
