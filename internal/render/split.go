@@ -193,8 +193,12 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 // string and wraps long strings at spaces. Every mapping is charged
 // indentCost per pair per level of depth, every sequence indentCost per element
 // per level, and every scalar (keys included) indentCost per level for each
-// extra line it may write: each non-blank line after a newline (and the first
-// line of a string that contains one) and each space. This is separate from, and in addition to, the alias charges above.
+// extra line it may write: each non-blank line after a line break (LF, CR, NEL,
+// LS or PS) and the first line of a string that contains one, and each space.
+// A !!binary scalar is charged on its decoded value, and a key longer than 128
+// bytes or containing a break is charged one more line for the separate
+// ": value" line. This is separate from, and in addition to, the alias
+// charges above.
 // Exceeding it fails with errExcessiveNesting. The budget is
 // indentByteBudget(len(data)) in SplitYAML (floor indentBytesFloor, ceiling
 // indentBytesCeiling), shared across a stream and refunded for a rejected
@@ -335,6 +339,8 @@ const (
 	// indentCost is charged per level of depth for each line a node adds to the
 	// output (the indentation the writers put on it).
 	indentCost = 2
+	// maxSimpleKeyLen is the longest key go-yaml v2 writes inline as "key: v".
+	maxSimpleKeyLen = 128
 )
 
 // indentByteBudget returns the nesting/indentation budget for an input of
@@ -353,20 +359,35 @@ func (c *converter) chargeIndent(n int) error {
 	return nil
 }
 
+// isBreakRune reports whether r is a line break for go-yaml v2's writer: LF,
+// CR, NEL, LS or PS.
+func isBreakRune(r rune) bool {
+	return r == '\n' || r == '\r' || r == '\u0085' || r == '\u2028' || r == '\u2029'
+}
+
 // extraLines counts the lines a string can add to the output beyond the key's
-// own line that carry indentation: each line that starts after a newline and is
-// not blank (a trailing newline starts nothing), plus each space, where the
-// writer may wrap. A string with a newline is written as a literal block whose
-// first line also starts on a new line, so that line counts too.
+// own line that carry indentation: each line that starts after a line break
+// (see isBreakRune) and is not blank (a trailing break starts nothing), plus
+// each space, where the writer may wrap. A string with a break is written as a
+// literal block whose first line also starts on a new line, so that line counts
+// too.
 func extraLines(s string) int {
 	n := strings.Count(s, " ")
-	if len(s) > 0 && s[0] != '\n' && strings.Contains(s, "\n") {
-		n++
-	}
-	for i := 0; i+1 < len(s); i++ {
-		if s[i] == '\n' && s[i+1] != '\n' {
+	prevBreak, hasBreak, startsBreak := false, false, false
+	for i, r := range s {
+		br := isBreakRune(r)
+		if i == 0 {
+			startsBreak = br
+		}
+		if br {
+			hasBreak = true
+		} else if prevBreak {
 			n++
 		}
+		prevBreak = br
+	}
+	if hasBreak && !startsBreak {
+		n++
 	}
 	return n
 }
@@ -625,6 +646,13 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 				return nil, errInvalidMapKey
 			}
 			ks, ok := k.(string)
+			if ok && (len(ks) > maxSimpleKeyLen || strings.ContainsFunc(ks, isBreakRune)) {
+				// go-yaml v2 writes such a key as "? key" and the value on a
+				// separate ": value" line.
+				if err := c.chargeIndent(indentCost * c.depth); err != nil {
+					return nil, err
+				}
+			}
 			if !ok {
 				if c.aliasDepth > 0 {
 					if err := c.charge(aliasedKeyFormatCost); err != nil {
@@ -685,7 +713,17 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 					return nil, err
 				}
 			}
-			return decodeBinary(n.Value)
+			d, err := decodeBinary(n.Value)
+			if err != nil {
+				return nil, err
+			}
+			// The writer emits the decoded text, not the base64.
+			if c.depth > 0 {
+				if err := c.chargeIndent(indentCost * c.depth * extraLines(d)); err != nil {
+					return nil, err
+				}
+			}
+			return d, nil
 		case "!!bool":
 			if b, ok := yaml11Bools[n.Value]; ok {
 				return b, nil // e.g. `!!bool yes`, which yaml.v3 fails to decode

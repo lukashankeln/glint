@@ -2,6 +2,7 @@ package render
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"runtime"
@@ -1105,9 +1106,12 @@ func TestNodeToValue_DeepStringsRejected(t *testing.T) {
 	words := strings.TrimSpace(strings.Repeat("word ", 4000))
 	lines := strings.Repeat("line\\n", 4000) // escaped newlines in a double-quoted scalar
 	cases := map[string]string{
-		"newlines":      deepStringDoc(depth, `"`+lines+`"`),
-		"plain-spaces":  deepStringDoc(depth, words),
-		"quoted-spaces": deepStringDoc(depth, `"`+words+`"`),
+		"newlines":        deepStringDoc(depth, `"`+lines+`"`),
+		"plain-spaces":    deepStringDoc(depth, words),
+		"quoted-spaces":   deepStringDoc(depth, `"`+words+`"`),
+		"binary-newlines": deepStringDoc(depth, "!!binary "+b64(strings.Repeat("\nx", 4000))),
+		"binary-spaces":   deepStringDoc(depth, "!!binary "+b64(words)),
+		"nel-literal":     deepStringDoc(depth, `"a\n`+strings.Repeat(`x\N`, 4000)+`"`),
 	}
 	for name, doc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -1186,9 +1190,10 @@ func TestIndentByteBudget_FloorAndCeiling(t *testing.T) {
 }
 
 func TestSplitYAML_RejectedDocumentRefundsIndentBudget(t *testing.T) {
-	// Each deep document needs ~800 KB of the ~1.1 MiB budget: the rejected
-	// bomb charges a lot before failing, so the third document fits only if
-	// the bomb's charges were refunded. Two such documents alone do not fit.
+	// Each deep document needs ~800 KB of the ~1.1 MiB budget, so two do not
+	// fit together. The rejected bomb in between is refunded, so the first
+	// document and the small last one are accepted; the second "fit" is
+	// rejected on its own overrun.
 	const depth = 900
 	fit := deepFlow("fit", depth, false)
 	bomb := deepFlow("bomb", 5000, false)
@@ -1212,6 +1217,8 @@ func TestSplitYAML_RejectedDocumentRefundsIndentBudget(t *testing.T) {
 	assert.Equal(t, []string{"fit", "last"}, names)
 }
 
+func b64(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
+
 func countNodes(n *yaml.Node) int {
 	c := 1
 	for _, ch := range n.Content {
@@ -1222,8 +1229,17 @@ func countNodes(n *yaml.Node) int {
 
 func leadingSpaces(b []byte) int {
 	total := 0
-	for _, line := range bytes.Split(b, []byte("\n")) {
-		total += len(line) - len(bytes.TrimLeft(line, " "))
+	// Split on every break go-yaml v2 can write raw (LF, CR, NEL, LS, PS).
+	atStart := true
+	for _, r := range string(b) {
+		switch {
+		case isBreakRune(r):
+			atStart = true
+		case r == ' ' && atStart:
+			total++
+		default:
+			atStart = false
+		}
 	}
 	return total
 }
@@ -1249,6 +1265,14 @@ func TestIndentCharges_BoundOutputIndentation(t *testing.T) {
 		"spaced-quoted":     chain(40, "{a: ", "}", `"`+long+`"`),
 		"deep-keys":         chain(30, "{a: ", "}", `{"`+long+`": v}`),
 		"seq-of-strings":    chain(25, "[", "]", `"`+long+`", "two words\\nx"`),
+		"binary-newlines":   chain(40, "{a: ", "}", "!!binary "+b64("\nx\nx\nx\nx\nx\nx")),
+		"binary-spaces":     chain(40, "{a: ", "}", "!!binary "+b64("x x x x x x x x x x")),
+		"literal-nel":       chain(40, "{a: ", "}", `"a\n`+strings.Repeat(`x\N`, 50)+`"`),
+		"literal-ls":        chain(40, "{a: ", "}", `"a\n`+strings.Repeat(`x\L`, 50)+`"`),
+		"literal-ps":        chain(40, "{a: ", "}", `"a\n`+strings.Repeat(`x\P`, 50)+`"`),
+		"long-keys":         chain(30, "{a: ", "}", `{"`+strings.Repeat("k", 135)+`": v}`),
+		"long-keys-nested":  chain(30, "{"+strings.Repeat("k", 135)+": ", "}", "v"),
+		"multiline-keys":    chain(30, "{a: ", "}", `{"two\nlines": v, "x\ry": w}`),
 	}
 	for name, flow := range cases {
 		t.Run(name, func(t *testing.T) {
