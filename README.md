@@ -304,6 +304,8 @@ glint init [path]
 
 **Exit codes:** `0` = clean, `1` = violations found, `2` = pipeline error
 
+An app that fails to render is a `glint/render-error` violation in `glint lint`, and `glint render` exits `2` if any app fails.
+
 ---
 
 ## Output formats
