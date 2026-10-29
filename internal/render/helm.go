@@ -407,7 +407,7 @@ func checkLocalChart(root string) error {
 	for _, name := range []string{"Chart.yaml", ".helmignore"} {
 		err := checkFileCapped(filepath.Join(root, name), maxStreamBytes)
 		if errors.Is(err, errStreamTooLarge) || errors.Is(err, fsutil.ErrNotRegular) {
-			return fmt.Errorf("loading chart at %q: %w", root, err)
+			return fmt.Errorf("loading chart at %q: %s: %w", root, name, err)
 		}
 	}
 	return nil
