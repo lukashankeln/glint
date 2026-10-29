@@ -333,3 +333,67 @@ func containsName(apps []DiscoveredApp, name string) bool {
 	}
 	return false
 }
+
+const testArgoApp = `apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: frontend
+  namespace: argocd
+spec:
+  source:
+    repoURL: "."
+    path: charts/frontend
+  destination:
+    namespace: production
+    server: https://kubernetes.default.svc
+  project: default
+`
+
+func writeArgoRepo(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "app.yaml"), []byte(testArgoApp), 0o644))
+	return root
+}
+
+func assertArgoAppKept(t *testing.T, root string) {
+	t.Helper()
+	apps, perrs, err := Discover(context.Background(), []string{root}, defaultCfg())
+	require.NoError(t, err)
+	assert.Empty(t, perrs)
+	assert.NotEmpty(t, filterByFramework(apps, FrameworkArgoCD), "expected the Application to be kept")
+}
+
+func TestDiscover_SymlinkToDevZeroSkipped(t *testing.T) {
+	if _, err := os.Stat("/dev/zero"); err != nil {
+		t.Skip("/dev/zero not available")
+	}
+	root := writeArgoRepo(t)
+	require.NoError(t, os.Symlink("/dev/zero", filepath.Join(root, "evil.yaml")))
+	assertArgoAppKept(t, root)
+}
+
+func TestDiscover_SymlinkedYAMLStillDiscovered(t *testing.T) {
+	root := writeArgoRepo(t)
+	require.NoError(t, os.Rename(filepath.Join(root, "app.yaml"), filepath.Join(root, "real.txt")))
+	require.NoError(t, os.Symlink(filepath.Join(root, "real.txt"), filepath.Join(root, "link.yaml")))
+	assertArgoAppKept(t, root)
+}
+
+// Lowers the package-level file cap, so it must stay serial.
+func TestDiscover_OversizedFileSkipped(t *testing.T) {
+	root := writeArgoRepo(t)
+	big := filepath.Join(root, "big.yaml")
+	require.NoError(t, os.WriteFile(big, []byte(testArgoApp), 0o644))
+	old := maxYAMLFileBytes
+	maxYAMLFileBytes = len(testArgoApp) - 1
+	t.Cleanup(func() { maxYAMLFileBytes = old })
+
+	apps, perrs, err := Discover(context.Background(), []string{root}, defaultCfg())
+	require.NoError(t, err)
+	assert.Empty(t, perrs)
+	assert.Empty(t, filterByFramework(apps, FrameworkArgoCD), "both files are over the lowered cap")
+
+	maxYAMLFileBytes = len(testArgoApp)
+	assertArgoAppKept(t, root)
+}

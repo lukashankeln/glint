@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -26,6 +27,7 @@ import (
 
 	"github.com/lukashankeln/glint/internal/config"
 	"github.com/lukashankeln/glint/internal/discovery"
+	"github.com/lukashankeln/glint/internal/fsutil"
 	"github.com/lukashankeln/glint/internal/manifest"
 )
 
@@ -336,7 +338,10 @@ func (r *HelmRenderer) buildValues(app discovery.DiscoveredApp) (map[string]any,
 
 	// 1. Load each values file.
 	for _, vf := range app.ValuesFiles {
-		data, err := os.ReadFile(vf)
+		data, err := readFileCapped(vf, maxStreamBytes)
+		if errors.Is(err, errStreamTooLarge) || errors.Is(err, fsutil.ErrNotRegular) {
+			return nil, fmt.Errorf("reading values file %q: %w", vf, err)
+		}
 		if err != nil {
 			slog.Warn("failed to read values file, skipping", "file", vf, "err", err)
 			continue

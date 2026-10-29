@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/lukashankeln/glint/internal/discovery"
+	"github.com/lukashankeln/glint/internal/fsutil"
 )
 
 // Tests in this file that lower maxStreamBytes or maxStreamDocuments mutate
@@ -78,7 +79,7 @@ func TestReadFileCapped(t *testing.T) {
 	link := filepath.Join(dir, "zero")
 	require.NoError(t, os.Symlink("/dev/zero", link))
 	_, err = readFileCapped(link, 1024)
-	assert.True(t, errors.Is(err, errStreamTooLarge))
+	assert.True(t, errors.Is(err, fsutil.ErrNotRegular))
 }
 
 func TestCappedBuffer_Write(t *testing.T) {
@@ -193,4 +194,18 @@ func TestSubprocessRenderers_OutputCap(t *testing.T) {
 			assert.Equal(t, 1, n)
 		})
 	}
+}
+
+// Lowers the package-level stream cap, so it must stay serial.
+func TestBuildValues_OversizedValuesFile(t *testing.T) {
+	dir := t.TempDir()
+	vf := filepath.Join(dir, "values.yaml")
+	require.NoError(t, os.WriteFile(vf, []byte("a: 1\nb: 2\n"), 0o644))
+	lowerStreamLimits(t, 4, maxStreamDocuments)
+
+	r := newHelmRenderer(defaultCfg())
+	_, err := r.buildValues(discovery.DiscoveredApp{Name: "x", ValuesFiles: []string{vf}})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, errStreamTooLarge))
+	assert.Contains(t, err.Error(), "values file")
 }

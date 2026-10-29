@@ -3,6 +3,7 @@ package discovery
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io/fs"
 	"log/slog"
 	"maps"
@@ -15,7 +16,13 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/lukashankeln/glint/internal/config"
+	"github.com/lukashankeln/glint/internal/fsutil"
 )
+
+// maxYAMLFileBytes caps how much of each YAML file discovery reads. It matches
+// render's 64 MiB stream limit. It is a var so tests can lower it; such tests
+// must not be parallel.
+var maxYAMLFileBytes = 64 << 20
 
 // fileResult holds everything extracted from a single YAML file during the
 // parallel processing phase.
@@ -246,9 +253,16 @@ func parseFile(ctx context.Context, path, repoRoot string, repoURLs map[string]b
 		return fileResult{}
 	}
 
-	data, err := os.ReadFile(path)
+	data, err := fsutil.ReadFileCapped(path, maxYAMLFileBytes)
 	if err != nil {
-		slog.Warn("skipping file with parse errors", "file", path, "err", err)
+		switch {
+		case errors.Is(err, fsutil.ErrNotRegular):
+			slog.Warn("skipping non-regular file", "file", path, "err", err)
+		case errors.Is(err, fsutil.ErrTooLarge):
+			slog.Warn("skipping file over the size limit", "file", path, "err", err)
+		default:
+			slog.Warn("skipping file with parse errors", "file", path, "err", err)
+		}
 		return fileResult{}
 	}
 
