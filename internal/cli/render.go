@@ -2,7 +2,9 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,7 +61,7 @@ Use --output <dir> to write each app to <dir>/<appname>.yaml.`,
 
 			rendered := 0
 			totalManifests := 0
-			var failed []string
+			var failed, writeFailed []string
 			for _, r := range renderApps(cmd.Context(), apps, cfg) {
 				if cmd.Context().Err() != nil {
 					return cmd.Context().Err()
@@ -76,27 +78,30 @@ Use --output <dir> to write each app to <dir>/<appname>.yaml.`,
 					continue
 				}
 
-				rendered++
-				totalManifests += len(r.manifests)
-
+				var werr error
 				if output != "" && output != "-" {
-					if err := writeManifestsToFile(output, r.app, r.manifests, format); err != nil {
-						slog.Warn("failed to write output file", "app", r.app.Name, "err", err)
-					}
+					werr = writeManifestsToFile(output, r.app, r.manifests, format)
+				} else {
+					werr = writeManifestsToWriter(cmd, r.app, r.manifests, format)
+				}
+				if werr != nil {
+					slog.Warn("failed to write output", "app", r.app.Name, "err", werr)
+					writeFailed = append(writeFailed, r.app.Name)
 					continue
 				}
-
-				// Write to stdout.
-				if err := writeManifestsToWriter(cmd, r.app, r.manifests, format); err != nil {
-					return err
-				}
+				rendered++
+				totalManifests += len(r.manifests)
 			}
 			slog.Info("rendering complete", "apps", rendered, "manifests", totalManifests)
 
+			var renderErr, writeErr error
 			if len(failed) > 0 {
-				return fmt.Errorf("rendering failed for %d app(s): %s", len(failed), strings.Join(failed, ", "))
+				renderErr = fmt.Errorf("rendering failed for %d app(s): %s", len(failed), strings.Join(failed, ", "))
 			}
-			return nil
+			if len(writeFailed) > 0 {
+				writeErr = fmt.Errorf("writing output failed for %d app(s): %s", len(writeFailed), strings.Join(writeFailed, ", "))
+			}
+			return errors.Join(renderErr, writeErr)
 		},
 	}
 
@@ -106,10 +111,21 @@ Use --output <dir> to write each app to <dir>/<appname>.yaml.`,
 }
 
 func writeManifestsToWriter(cmd *cobra.Command, app discovery.DiscoveredApp, manifests []manifest.Manifest, format string) error {
-	w := cmd.OutOrStdout()
-	fmt.Fprintf(w, "# --- app: %s ---\n", app.Name)
+	return writeManifests(cmd.OutOrStdout(), app, manifests, format, true)
+}
+
+// writeManifests writes the manifests to w, checking every write. The app
+// header comment is only emitted for stdout output.
+func writeManifests(w io.Writer, app discovery.DiscoveredApp, manifests []manifest.Manifest, format string, header bool) error {
+	if header {
+		if _, err := fmt.Fprintf(w, "# --- app: %s ---\n", app.Name); err != nil {
+			return err
+		}
+	}
 	for _, m := range manifests {
-		fmt.Fprintln(w, "---")
+		if _, err := fmt.Fprintln(w, "---"); err != nil {
+			return err
+		}
 		if format == "json" {
 			enc := json.NewEncoder(w)
 			enc.SetIndent("", "  ")
@@ -121,13 +137,18 @@ func writeManifestsToWriter(cmd *cobra.Command, app discovery.DiscoveredApp, man
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(w, "%s", out)
+			if _, err := fmt.Fprintf(w, "%s", out); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
-func writeManifestsToFile(dir string, app discovery.DiscoveredApp, manifests []manifest.Manifest, format string) error {
+// writeManifestsToFile writes the app's manifests to <dir>/<app>.yaml (or
+// .json). If anything fails after the file was created, the partial file is
+// removed (best effort) so it cannot be mistaken for complete output.
+func writeManifestsToFile(dir string, app discovery.DiscoveredApp, manifests []manifest.Manifest, format string) (err error) {
 	ext := ".yaml"
 	if format == "json" {
 		ext = ".json"
@@ -137,23 +158,18 @@ func writeManifestsToFile(dir string, app discovery.DiscoveredApp, manifests []m
 	if err != nil {
 		return fmt.Errorf("creating %q: %w", outPath, err)
 	}
-	defer f.Close()
-
-	for _, m := range manifests {
-		fmt.Fprintln(f, "---")
-		if format == "json" {
-			enc := json.NewEncoder(f)
-			enc.SetIndent("", "  ")
-			if err := enc.Encode(m.Object); err != nil {
-				return err
-			}
-		} else {
-			out, err := sigsyaml.Marshal(m.Object)
-			if err != nil {
-				return err
-			}
-			fmt.Fprintf(f, "%s", out)
+	defer func() {
+		if cerr := f.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("closing %q: %w", outPath, cerr)
 		}
+		if err != nil {
+			// Best effort; a failed removal must not replace the original error.
+			_ = os.Remove(outPath)
+		}
+	}()
+
+	if werr := writeManifests(f, app, manifests, format, false); werr != nil {
+		return fmt.Errorf("writing %q: %w", outPath, werr)
 	}
 	return nil
 }

@@ -113,7 +113,7 @@ render:
 
 These limits are built in and not configurable.
 
-An app whose render fails (the stream, document-count and subprocess stdout limits below, YAML decode errors, helm/kustomize errors, timeouts) is reported by `glint lint` as an error-severity `glint/render-error` violation, so with the default `fail_on` the run fails instead of passing with the app unlinted. `glint render` still writes the other apps and exits 2. Unreachable remote charts and other network failures fail the app's render the same way; use `--skip-rules glint/render-error` to opt out deliberately. `--only-rules` also drops `glint/render-error` unless it is listed, so include it when restricting the rules a CI run checks.
+An app whose render fails (the stream, document-count and subprocess stdout limits below, YAML decode errors, helm/kustomize errors, timeouts) is reported by `glint lint` as an error-severity `glint/render-error` violation, so with the default `fail_on` the run fails instead of passing with the app unlinted. `glint render` still writes the other apps and exits 2. With `--output`, an app whose file cannot be fully written also makes it exit 2, and the partial file is removed. Unreachable remote charts and other network failures fail the app's render the same way; use `--skip-rules glint/render-error` to opt out deliberately. `--only-rules` also drops `glint/render-error` unless it is listed, so include it when restricting the rules a CI run checks.
 
 - Each YAML stream (one raw manifest file, or one helm/kustomize render) is limited to 64 MiB and 10,000 documents. Exceeding either is an error for that app.
 - Discovery reads each `*.yaml`/`*.yml` file up to 64 MiB and skips larger files with a warning.
