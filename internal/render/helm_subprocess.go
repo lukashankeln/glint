@@ -13,6 +13,12 @@ func renderHelmSubprocess(ctx context.Context, app discovery.DiscoveredApp, apiV
 	ns := namespace(app)
 	release := releaseName(app)
 
+	if app.RootPath != "" {
+		if err := checkLocalChart(app.RootPath); err != nil {
+			return nil, err
+		}
+	}
+
 	chartRef := app.RootPath
 	if chartRef == "" {
 		chartRef = app.ChartName

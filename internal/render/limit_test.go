@@ -209,3 +209,21 @@ func TestBuildValues_OversizedValuesFile(t *testing.T) {
 	assert.True(t, errors.Is(err, errStreamTooLarge))
 	assert.Contains(t, err.Error(), "values file")
 }
+
+func TestHelmRenderer_ChartYAMLTooLarge(t *testing.T) {
+	dir := t.TempDir()
+	chartYAML := "apiVersion: v2\nname: c\nversion: 0.1.0\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Chart.yaml"), []byte(chartYAML), 0o644))
+	app := discovery.DiscoveredApp{Name: "c", RootPath: dir}
+
+	lowerStreamLimits(t, len(chartYAML)-1, maxStreamDocuments)
+	_, err := newHelmRenderer(defaultCfg()).renderSDK(context.Background(), app)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, errStreamTooLarge))
+
+	// At the limit the check passes; any later failure is not a limit error.
+	lowerStreamLimits(t, len(chartYAML), maxStreamDocuments)
+	_, err = newHelmRenderer(defaultCfg()).renderSDK(context.Background(), app)
+	assert.False(t, errors.Is(err, errStreamTooLarge))
+	assert.False(t, errors.Is(err, fsutil.ErrNotRegular))
+}
