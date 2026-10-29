@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/kustomize/kyaml/filesys"
 
 	"github.com/lukashankeln/glint/internal/discovery"
 	"github.com/lukashankeln/glint/internal/fsutil"
@@ -250,4 +251,43 @@ func TestCheckLocalChart_DefersOtherErrorsToLoader(t *testing.T) {
 	tgz := filepath.Join(dir, "chart.tgz")
 	require.NoError(t, os.WriteFile(tgz, []byte("not really a tarball"), 0o644))
 	assert.NoError(t, checkLocalChart(tgz))
+}
+
+const kustCM = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: a\n"
+
+func writeKustApp(t *testing.T, resource string) discovery.DiscoveredApp {
+	t.Helper()
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "kustomization.yaml"), []byte("resources:\n- r.yaml\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "r.yaml"), []byte(resource), 0o644))
+	return discovery.DiscoveredApp{Name: "k", Renderer: discovery.RendererKustomize, RootPath: dir}
+}
+
+func TestKustomizeSDK_ResourceSizeCap(t *testing.T) {
+	app := writeKustApp(t, kustCM)
+	// kustomization.yaml is read through the cap too and is smaller than r.yaml.
+	lowerStreamLimits(t, len(kustCM), 10)
+	ms, err := newKustomizeRenderer(defaultCfg()).renderSDK(context.Background(), app)
+	require.NoError(t, err)
+	require.Len(t, ms, 1)
+	assert.Equal(t, "a", ms[0].Name)
+
+	lowerStreamLimits(t, len(kustCM)-1, 10)
+	_, err = newKustomizeRenderer(defaultCfg()).renderSDK(context.Background(), app)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "too large")
+}
+
+func TestCappedFS_ReadFile(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "f")
+	require.NoError(t, os.WriteFile(p, []byte("12345"), 0o644))
+	fs := cappedFS{filesys.MakeFsOnDisk()}
+	data, err := fs.ReadFile(p)
+	require.NoError(t, err)
+	assert.Equal(t, "12345", string(data))
+
+	lowerStreamLimits(t, 4, 10)
+	_, err = fs.ReadFile(p)
+	assert.True(t, errors.Is(err, errStreamTooLarge))
+	assert.True(t, errors.Is(err, fsutil.ErrTooLarge))
 }
