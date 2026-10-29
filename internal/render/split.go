@@ -195,9 +195,9 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 // per level, and every scalar (keys included) indentCost per level for each
 // extra line it may write: each non-blank line after a line break (LF, CR, NEL,
 // LS or PS) and the first line of a string that contains one, and each space.
-// A !!binary scalar is charged on its decoded value, and a key longer than 128
-// bytes or containing a break is charged one more line for the separate
-// ": value" line. This is separate from, and in addition to, the alias
+// A !!binary scalar is also charged on its decoded value, and a key longer
+// than 128 bytes or containing a break is charged one more line for the
+// separate ": value" line. This is separate from, and in addition to, the alias
 // charges above.
 // Exceeding it fails with errExcessiveNesting. The budget is
 // indentByteBudget(len(data)) in SplitYAML (floor indentBytesFloor, ceiling
