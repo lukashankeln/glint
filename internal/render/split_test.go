@@ -1,6 +1,7 @@
 package render
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"runtime"
@@ -840,14 +841,15 @@ func TestNodeToValueBudget_Edge(t *testing.T) {
 	const doc = "[&s abc, *s]"
 	const cost = len("abc") + aliasedScalarCost + aliasedIndentCost
 
+	indent := indentByteBudget(0)
 	budget := cost
-	v, err := nodeToValueBudget(parseNode(t, doc), &budget)
+	v, err := nodeToValueBudget(parseNode(t, doc), &budget, &indent)
 	require.NoError(t, err)
 	assert.Equal(t, []any{"abc", "abc"}, v)
 	assert.Equal(t, 0, budget)
 
 	budget = cost - 1
-	_, err = nodeToValueBudget(parseNode(t, doc), &budget)
+	_, err = nodeToValueBudget(parseNode(t, doc), &budget, &indent)
 	require.ErrorIs(t, err, errExcessiveAliasExpansion)
 }
 
@@ -860,25 +862,33 @@ func TestNodeToValue_DeepAliasedMappingRejected(t *testing.T) {
 	fmt.Fprintf(&b, "d: &d %s\nl:\n", deep)
 	b.WriteString(strings.Repeat("  - *d\n", 60))
 
-	_, err := nodeToValue(parseNode(t, b.String()))
+	// The aliased copies also charge the indentation budget, which nodeToValue
+	// would trip first; give it ample room so this pins the alias budget's
+	// indentation charge on its own.
+	budget, indent := aliasByteBudget(0), 1<<40
+	_, err := nodeToValueBudget(parseNode(t, b.String()), &budget, &indent)
 	require.ErrorIs(t, err, errExcessiveAliasExpansion)
+
+	_, err = nodeToValue(parseNode(t, b.String()))
+	require.ErrorIs(t, err, errExcessiveNesting)
 }
 
 func TestNodeToValueBudget_NodeChargesOnly(t *testing.T) {
 	// Aliased empty mappings and sequences carry no scalars: each alias, one
 	// level deep, charges its base cost plus aliasedIndentCost.
 	const n = 30
+	indent := indentByteBudget(0)
 	for anchored, base := range map[string]int{"{}": aliasedMapCost, "[]": aliasedSeqCost} {
 		doc := "[&e " + anchored + strings.Repeat(", *e", n) + "]"
 		total := n * (base + aliasedIndentCost)
 
 		budget := total
-		_, err := nodeToValueBudget(parseNode(t, doc), &budget)
+		_, err := nodeToValueBudget(parseNode(t, doc), &budget, &indent)
 		require.NoError(t, err, anchored)
 		assert.Equal(t, 0, budget, anchored)
 
 		budget = total - 1
-		_, err = nodeToValueBudget(parseNode(t, doc), &budget)
+		_, err = nodeToValueBudget(parseNode(t, doc), &budget, &indent)
 		require.ErrorIs(t, err, errExcessiveAliasExpansion, anchored)
 	}
 }
@@ -1013,11 +1023,11 @@ func TestAliasCharges_CoverHeapAllocation(t *testing.T) {
 	)
 
 	measure := func(node *yaml.Node) (alloc uint64, charged int) {
-		budget := 1 << 40
+		budget, indent := 1<<40, 1<<40
 		var before, after runtime.MemStats
 		runtime.GC()
 		runtime.ReadMemStats(&before)
-		v, err := nodeToValueBudget(node, &budget)
+		v, err := nodeToValueBudget(node, &budget, &indent)
 		runtime.ReadMemStats(&after)
 		require.NoError(t, err)
 		runtime.KeepAlive(v)
@@ -1047,6 +1057,216 @@ func TestAliasCharges_CoverHeapAllocation(t *testing.T) {
 			}
 			t.Logf("per alias: allocated %d, charged %d", alloc, charged)
 			assert.LessOrEqual(t, alloc, uint64(charged))
+		})
+	}
+}
+
+// deepFlow builds a ConfigMap whose data nests depth levels of flow mappings
+// (seq false) or flow sequences (seq true).
+func deepFlow(name string, depth int, seq bool) string {
+	open, closeS, leaf := "{a: ", "}", "x"
+	if seq {
+		open, closeS = "[", "]"
+	}
+	head := fmt.Sprintf("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: %s\ndata: ", name)
+	return head + strings.Repeat(open, depth) + leaf + strings.Repeat(closeS, depth) + "\n"
+}
+
+func TestNodeToValue_DeepNestingRejected(t *testing.T) {
+	for name, seq := range map[string]bool{"mapping": false, "sequence": true} {
+		t.Run(name, func(t *testing.T) {
+			_, err := nodeToValue(parseNode(t, deepFlow("deep", 5000, seq)))
+			require.ErrorIs(t, err, errExcessiveNesting)
+		})
+	}
+}
+
+func TestSplitYAML_DeepNestingSkipsDocument(t *testing.T) {
+	good := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: good\n"
+	for name, seq := range map[string]bool{"mapping": false, "sequence": true} {
+		t.Run(name, func(t *testing.T) {
+			data := []byte(deepFlow("deep", 5000, seq) + "---\n" + good)
+			manifests, err := SplitYAML(data, "app", "file.yaml", false)
+			require.NoError(t, err)
+			require.Len(t, manifests, 1)
+			assert.Equal(t, "good", manifests[0].Name)
+		})
+	}
+}
+
+// deepStringDoc nests a ConfigMap value depth levels of {a: ...} around the scalar
+// (already formatted for flow context, or a block scalar when block is set).
+func deepStringDoc(depth int, scalar string) string {
+	return "apiVersion: v1\nkind: ConfigMap\ndata: " + strings.Repeat("{a: ", depth) + scalar + strings.Repeat("}", depth) + "\n"
+}
+
+func TestNodeToValue_DeepStringsRejected(t *testing.T) {
+	const depth = 200
+	words := strings.TrimSpace(strings.Repeat("word ", 4000))
+	lines := strings.Repeat("line\\n", 4000) // escaped newlines in a double-quoted scalar
+	cases := map[string]string{
+		"newlines":      deepStringDoc(depth, `"`+lines+`"`),
+		"plain-spaces":  deepStringDoc(depth, words),
+		"quoted-spaces": deepStringDoc(depth, `"`+words+`"`),
+	}
+	for name, doc := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := nodeToValue(parseNode(t, doc))
+			require.ErrorIs(t, err, errExcessiveNesting)
+		})
+	}
+}
+
+// crdSchema builds a schema-like tree depth levels deep: properties/items
+// chains with a description at each level, as block YAML or compact JSON.
+func crdSchema(depth int, json bool) string {
+	desc := "A description of this field that has several words in it."
+	if json {
+		var b strings.Builder
+		for range depth {
+			fmt.Fprintf(&b, `{"type":"object","description":%q,"properties":{"f":`, desc)
+		}
+		b.WriteString(`{"type":"string"}`)
+		b.WriteString(strings.Repeat("}}", depth))
+		return "apiVersion: v1\nkind: ConfigMap\nschema: " + b.String() + "\n"
+	}
+	var b strings.Builder
+	b.WriteString("apiVersion: v1\nkind: ConfigMap\nschema:\n")
+	for i := range depth {
+		ind := strings.Repeat("  ", 1+2*i)
+		fmt.Fprintf(&b, "%stype: object\n%sdescription: %s\n%sproperties:\n%s  f:\n", ind, ind, desc, ind, ind)
+	}
+	b.WriteString(strings.Repeat("  ", 1+2*depth) + "type: string\n")
+	return b.String()
+}
+
+func TestSplitYAML_RealisticDeepSchemaAccepted(t *testing.T) {
+	for name, json := range map[string]bool{"block": false, "json-flow": true} {
+		t.Run(name, func(t *testing.T) {
+			manifests, err := SplitYAML([]byte(crdSchema(20, json)), "app", "file.yaml", false)
+			require.NoError(t, err)
+			require.Len(t, manifests, 1)
+		})
+	}
+}
+
+func TestSplitYAML_LargeMultilineLiteralAccepted(t *testing.T) {
+	var lit strings.Builder
+	for lit.Len() < 200<<10 {
+		lit.WriteString("    a line of the script with some words\n\n")
+	}
+	data := []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\ndata:\n  script: |\n" + lit.String())
+	manifests, err := SplitYAML(data, "app", "file.yaml", false)
+	require.NoError(t, err)
+	require.Len(t, manifests, 1)
+}
+
+func TestNodeToValueBudget_IndentBudgetShared(t *testing.T) {
+	doc := deepFlow("d", 300, false) // 2*sum(0..300) ~ 90 KB
+	aliasB := aliasByteBudget(0)
+	indent := indentByteBudget(0)
+	_, err := nodeToValueBudget(parseNode(t, doc), &aliasB, &indent)
+	require.NoError(t, err)
+	used := indentByteBudget(0) - indent
+	require.Positive(t, used)
+
+	// A budget that fits one document fits it once.
+	indent = used
+	_, err = nodeToValueBudget(parseNode(t, doc), &aliasB, &indent)
+	require.NoError(t, err)
+	assert.Equal(t, 0, indent)
+	_, err = nodeToValueBudget(parseNode(t, doc), &aliasB, &indent)
+	require.ErrorIs(t, err, errExcessiveNesting)
+}
+
+func TestIndentByteBudget_FloorAndCeiling(t *testing.T) {
+	assert.Equal(t, indentBytesFloor, indentByteBudget(0))
+	assert.Equal(t, 10*(1<<20), indentByteBudget(1<<20))
+	assert.Equal(t, indentBytesCeiling, indentByteBudget(1<<40))
+}
+
+func TestSplitYAML_RejectedDocumentRefundsIndentBudget(t *testing.T) {
+	// Each deep document needs ~800 KB of the ~1.1 MiB budget: the rejected
+	// bomb charges a lot before failing, so the third document fits only if
+	// the bomb's charges were refunded. Two such documents alone do not fit.
+	const depth = 900
+	fit := deepFlow("fit", depth, false)
+	bomb := deepFlow("bomb", 5000, false)
+	data := []byte(fit + "---\n" + bomb + "---\n" + strings.Replace(fit, "fit", "fit2", 1))
+	budget := indentByteBudget(len(data))
+	cost := 0
+	for d := 0; d < depth; d++ {
+		cost += indentCost * d
+	}
+	require.Less(t, cost, budget, "fixture: one document must fit")
+	require.Greater(t, 2*cost, budget, "fixture: two documents must not fit")
+	// Without the refund the bomb would drain the budget; with it the second
+	// "fit" still does not fit, but a small last document does.
+	data = append(data, []byte("---\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: last\n")...)
+	manifests, err := SplitYAML(data, "app", "file.yaml", false)
+	require.NoError(t, err)
+	var names []string
+	for _, m := range manifests {
+		names = append(names, m.Name)
+	}
+	assert.Equal(t, []string{"fit", "last"}, names)
+}
+
+func countNodes(n *yaml.Node) int {
+	c := 1
+	for _, ch := range n.Content {
+		c += countNodes(ch)
+	}
+	return c
+}
+
+func leadingSpaces(b []byte) int {
+	total := 0
+	for _, line := range bytes.Split(b, []byte("\n")) {
+		total += len(line) - len(bytes.TrimLeft(line, " "))
+	}
+	return total
+}
+
+// TestIndentCharges_BoundOutputIndentation checks that what the converter
+// charges to the indentation budget is at least the indentation the writers
+// produce: YAML via sigs.k8s.io/yaml (as `glint render` does) and JSON with a
+// two-space indent (bounded by twice the charge plus four bytes per node).
+func TestIndentCharges_BoundOutputIndentation(t *testing.T) {
+	chain := func(n int, open, closeS, leaf string) string {
+		return strings.Repeat(open, n) + leaf + strings.Repeat(closeS, n)
+	}
+	long := strings.TrimSpace(strings.Repeat("word ", 120))
+	multi := strings.Repeat("line of text\\n\\n", 30)
+	cases := map[string]string{
+		"map-chain":         chain(60, "{a: ", "}", "x"),
+		"seq-chain":         chain(60, "[", "]", "x"),
+		"alternating":       chain(30, "{a: [", "]}", "x"),
+		"wide-at-depth":     chain(20, "{a: ", "}", "{"+strings.TrimSuffix(strings.Repeat("k: v, ", 50), ", ")+"}"),
+		"multiline":         chain(40, "{a: ", "}", `"`+multi+`"`),
+		"multiline-ends-nl": chain(40, "{a: ", "}", `"first\nsecond\n"`),
+		"spaced-plain":      chain(40, "{a: ", "}", long),
+		"spaced-quoted":     chain(40, "{a: ", "}", `"`+long+`"`),
+		"deep-keys":         chain(30, "{a: ", "}", `{"`+long+`": v}`),
+		"seq-of-strings":    chain(25, "[", "]", `"`+long+`", "two words\\nx"`),
+	}
+	for name, flow := range cases {
+		t.Run(name, func(t *testing.T) {
+			node := parseNode(t, flow)
+			aliasB, indent := 1<<40, 1<<40
+			v, err := nodeToValueBudget(node, &aliasB, &indent)
+			require.NoError(t, err)
+			charged := 1<<40 - indent
+
+			y, err := sigsyaml.Marshal(v)
+			require.NoError(t, err)
+			assert.LessOrEqual(t, leadingSpaces(y), charged, "yaml")
+
+			var jb bytes.Buffer
+			enc := json.NewEncoder(&jb)
+			enc.SetIndent("", "  ")
+			require.NoError(t, enc.Encode(v))
+			assert.LessOrEqual(t, leadingSpaces(jb.Bytes()), 2*charged+4*countNodes(node), "json")
 		})
 	}
 }
