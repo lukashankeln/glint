@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/lukashankeln/glint/internal/discovery"
 	"github.com/lukashankeln/glint/internal/manifest"
 	"github.com/lukashankeln/glint/internal/plugins"
+	"github.com/lukashankeln/glint/internal/render"
 	"github.com/lukashankeln/glint/internal/rules"
 )
 
@@ -83,6 +85,7 @@ func newLintCmd() *cobra.Command {
 			// Render all apps in parallel and collect manifests.
 			var allManifests []manifest.Manifest
 			var successfulRenders []renderResult
+			var renderViolations []rules.Violation
 			rendered := 0
 			for _, r := range renderAppsParallel(cmd.Context(), apps, cfg) {
 				if cmd.Context().Err() != nil {
@@ -90,6 +93,9 @@ func newLintCmd() *cobra.Command {
 				}
 				if r.err != nil {
 					slog.Warn("render failed, skipping", "app", r.app.Name, "err", r.err)
+					if v, ok := renderErrorViolation(r); ok {
+						renderViolations = append(renderViolations, v)
+					}
 					continue
 				}
 				rendered++
@@ -114,6 +120,7 @@ func newLintCmd() *cobra.Command {
 			// Evaluate rules.
 			violations := engine.Evaluate(allManifests)
 			violations = append(violations, pluginViolations...)
+			violations = append(violations, renderViolations...)
 
 			// Files that were identified as GitOps CRDs but could not be parsed
 			// cannot be validated at all, so they are reported as errors.
@@ -256,6 +263,22 @@ func splitCSV2(s string) []string {
 		}
 	}
 	return out
+}
+
+// renderErrorViolation reports a render failure that must not pass silently:
+// a merge key glint could not resolve the way Kubernetes would means the
+// app's manifests cannot be validated, so it is an error rather than a skip.
+func renderErrorViolation(r renderResult) (rules.Violation, bool) {
+	if !errors.Is(r.err, render.ErrAmbiguousMergeKey) {
+		return rules.Violation{}, false
+	}
+	return rules.Violation{
+		RuleID:   "glint/parse-error",
+		Severity: rules.SeverityError,
+		Message:  fmt.Sprintf("app %q could not be parsed and cannot be validated: %v", r.app.Name, r.err),
+		FilePath: r.app.RootPath,
+		Source:   "render",
+	}, true
 }
 
 func countBySeverity(violations []rules.Violation, sev rules.Severity) int {
