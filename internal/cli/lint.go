@@ -87,7 +87,7 @@ func newLintCmd() *cobra.Command {
 			var successfulRenders []renderResult
 			var renderViolations []rules.Violation
 			rendered := 0
-			for _, r := range renderAppsParallel(cmd.Context(), apps, cfg) {
+			for _, r := range renderApps(cmd.Context(), apps, cfg) {
 				if cmd.Context().Err() != nil {
 					return cmd.Context().Err()
 				}
@@ -264,6 +264,11 @@ func splitCSV2(s string) []string {
 	}
 	return out
 }
+
+// renderApps is renderAppsParallel, a variable only so a test can inject a
+// render error that real input cannot produce; such tests must not run in
+// parallel.
+var renderApps = renderAppsParallel
 
 // renderErrorViolation reports a render failure that must not pass silently:
 // a merge key glint could not resolve the way Kubernetes would means the
