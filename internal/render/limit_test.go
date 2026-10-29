@@ -3,6 +3,7 @@ package render
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -264,18 +265,21 @@ func writeKustApp(t *testing.T, resource string) discovery.DiscoveredApp {
 }
 
 func TestKustomizeSDK_ResourceSizeCap(t *testing.T) {
-	app := writeKustApp(t, kustCM)
+	// The comment makes r.yaml larger than the rendered output, so only the
+	// read cap, not SplitYAML's output cap, can reject it.
+	resource := kustCM + "# " + strings.Repeat("x", 200) + "\n"
+	app := writeKustApp(t, resource)
 	// kustomization.yaml is read through the cap too and is smaller than r.yaml.
-	lowerStreamLimits(t, len(kustCM), 10)
+	lowerStreamLimits(t, len(resource), 10)
 	ms, err := newKustomizeRenderer(defaultCfg()).renderSDK(context.Background(), app)
 	require.NoError(t, err)
 	require.Len(t, ms, 1)
 	assert.Equal(t, "a", ms[0].Name)
 
-	lowerStreamLimits(t, len(kustCM)-1, 10)
+	lowerStreamLimits(t, len(resource)-1, 10)
 	_, err = newKustomizeRenderer(defaultCfg()).renderSDK(context.Background(), app)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "too large")
+	assert.Contains(t, err.Error(), fmt.Sprintf("file is %d bytes", len(resource)))
 }
 
 func TestCappedFS_ReadFile(t *testing.T) {

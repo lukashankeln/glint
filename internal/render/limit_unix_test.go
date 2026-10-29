@@ -146,13 +146,18 @@ func TestKustomizeSDK_AbsoluteDevZeroResource(t *testing.T) {
 func TestKustomizeSDK_FIFOResource(t *testing.T) {
 	dir, app := kustApp(t, "resources:\n- p.yaml\n")
 	require.NoError(t, syscall.Mkfifo(filepath.Join(dir, "p.yaml"), 0o644))
-	assert.Error(t, renderKust(t, app))
+	err := renderKust(t, app)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not a regular file")
 }
 
 func TestKustomizeSDK_KustomizationSymlinkToDevZero(t *testing.T) {
 	dir, app := kustApp(t, "")
 	require.NoError(t, os.Symlink("/dev/zero", filepath.Join(dir, "kustomization.yaml")))
-	assert.Error(t, renderKust(t, app))
+	// kustomize drops the load error and reports the file as missing.
+	err := renderKust(t, app)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unable to find one of")
 }
 
 func TestCappedFS_ReadFileSymlinkToDevZero(t *testing.T) {

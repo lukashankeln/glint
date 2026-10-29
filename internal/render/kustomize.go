@@ -57,7 +57,7 @@ func (r *KustomizeRenderer) Render(ctx context.Context, app discovery.Discovered
 // and restricted to regular files, so a kustomization file, resource, patch or
 // generator source that is a device, FIFO or huge file fails instead of being
 // read whole. Open is deliberately not wrapped: no kustomize build-path code
-// calls FileSystem.Open (besides ReadFile it only stats and lists). The cap is
+// calls FileSystem.Open (besides ReadFile it only stats paths). The cap is
 // per file; there is no total budget across files.
 type cappedFS struct{ filesys.FileSystem }
 
