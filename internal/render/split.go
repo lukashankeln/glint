@@ -231,10 +231,11 @@ func nodeToValueBudget(n *yaml.Node, aliasBudget, indentBudget *int) (any, error
 // pre-walking the whole tree: YAML requires an anchor to be defined (and thus
 // already visited, since convert follows document order, merge sequences
 // included) before any alias references it — yaml.v3 itself rejects
-// forward references at parse time — so the only way expand's lookup can miss is a target from outside this
-// document, e.g. an earlier document on the same decoder stream. decodeCount,
-// aliasCount and aliasDepth mirror the fields of the same names on yaml.v3's
-// decoder and drive the excessive-aliasing guard.
+// forward references at parse time — so the only way expand's lookup can miss
+// is a target from outside this document, e.g. an earlier document on the
+// same decoder stream. decodeCount, aliasCount and aliasDepth mirror the
+// fields of the same names on yaml.v3's decoder and drive the
+// excessive-aliasing guard.
 // aliasBytesLeft is the remaining alias byte budget, possibly shared with other
 // converters (one per document of a stream); indentBytesLeft likewise for the
 // nesting/indentation budget.
