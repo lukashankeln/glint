@@ -113,13 +113,13 @@ render:
 
 These limits are built in and not configurable.
 
-An app whose render fails (these limits, YAML decode errors, helm/kustomize errors, timeouts) is reported by `glint lint` as an error-severity `glint/render-error` violation, so with the default `fail_on` the run fails instead of passing with the app unlinted. `glint render` still writes the other apps and exits 2. Unreachable remote charts and other network failures fail the app's render the same way; use `--skip-rules glint/render-error` to opt out deliberately.
+An app whose render fails (the stream, document-count and subprocess stdout limits below, YAML decode errors, helm/kustomize errors, timeouts) is reported by `glint lint` as an error-severity `glint/render-error` violation, so with the default `fail_on` the run fails instead of passing with the app unlinted. `glint render` still writes the other apps and exits 2. Unreachable remote charts and other network failures fail the app's render the same way; use `--skip-rules glint/render-error` to opt out deliberately. `--only-rules` also drops `glint/render-error` unless it is listed, so include it when restricting the rules a CI run checks.
 
 - Each YAML stream (one raw manifest file, or one helm/kustomize render) is limited to 64 MiB and 10,000 documents. Exceeding either is an error for that app.
 - helm/kustomize subprocess stdout is capped at the same 64 MiB; the render fails with a limit error. Subprocess stderr shown in errors is truncated at 64 KiB.
 - YAML anchors/aliases: alias expansion within a stream shares a memory budget of `max(1 MiB, 10 × the stream size)`, capped at 64 MiB. A document whose aliases exceed it, or that trips the excessive-aliasing heuristic, is skipped (logged at debug level) from both render output and linting, rather than failing the app.
 - Nesting: a document's nesting depth shares a budget of `max(1 MiB, 10 × the stream size)`, capped at 256 MiB, per stream. It approximates the indentation `glint render` writes (for YAML; JSON output is about twice that), including the repeated indentation of multi-line and long strings in deeply nested documents. A document over it is skipped (logged at debug level) from both render output and linting, like the alias limits.
-- Merge keys: a quoted or block `"<<"` mapping key whose `!` tag cannot be resolved from the source is an error for that app, rather than being guessed: `glint lint` reports it as an error-severity `glint/parse-error` violation (rather than `glint/render-error`), like any other app render failure.
+- Merge keys: a quoted or block `"<<"` mapping key whose `!` tag cannot be resolved from the source is an error for that app, rather than being guessed: `glint lint` reports it as an error-severity violation like other render failures, but with the more specific `glint/parse-error` ID, so `--skip-rules glint/render-error` does not silence it.
 
 Caveats: limits apply per stream, not per app or per run. They bound memory, but plain YAML can still use tens of times its size in memory. Memory used inside the in-process helm/kustomize libraries is not capped.
 
