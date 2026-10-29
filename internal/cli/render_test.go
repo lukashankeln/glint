@@ -185,26 +185,40 @@ func TestWriteManifestsToFile_WriteErrorRemovesPartialFile(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr), "partial file should be removed, got %v", statErr)
 }
 
-type failingWriter struct{}
+type failingWriter struct{ calls *int }
 
-func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("disk on fire") }
+func (w failingWriter) Write([]byte) (int, error) {
+	*w.calls++
+	return 0, errors.New("disk on fire")
+}
 
 // TestRender_StdoutWriteFailureFailsRun checks that a failing stdout is not
-// ignored.
+// ignored, and that the run stops instead of writing later apps after a
+// truncated document.
 func TestRender_StdoutWriteFailureFailsRun(t *testing.T) {
-	dir := writeRenderTestApps(t, "a")
+	dir := writeRenderTestApps(t, "a", "b")
 
 	oldCfg, oldRender := cfgFile, renderApps
 	t.Cleanup(func() { cfgFile, renderApps = oldCfg, oldRender })
 	cfgFile = filepath.Join(dir, "glint.yaml")
+	var firstName string
 	renderApps = func(_ context.Context, apps []discovery.DiscoveredApp, _ *config.Config) []renderResult {
-		return []renderResult{{app: apps[0], manifests: []manifest.Manifest{testConfigMapManifest("x")}}}
+		require.GreaterOrEqual(t, len(apps), 2)
+		firstName = apps[0].Name
+		return []renderResult{
+			{app: apps[0], manifests: []manifest.Manifest{testConfigMapManifest("x")}},
+			{app: apps[1], manifests: []manifest.Manifest{testConfigMapManifest("y")}},
+		}
 	}
 
+	calls := 0
 	cmd := newRenderCmd()
-	cmd.SetOut(failingWriter{})
+	cmd.SetOut(failingWriter{calls: &calls})
+	// Keep cobra's usage text off the failing writer; root sets these too.
+	cmd.SilenceUsage, cmd.SilenceErrors = true, true
 	cmd.SetErr(&bytes.Buffer{})
 	cmd.SetArgs([]string{dir})
 
-	require.Error(t, cmd.Execute())
+	assert.EqualError(t, cmd.Execute(), "writing output for app "+firstName+": disk on fire")
+	assert.Equal(t, 1, calls, "render must stop at the first failed stdout write")
 }
