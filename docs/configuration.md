@@ -115,7 +115,7 @@ These limits are built in and not configurable.
 
 - Each YAML stream (one raw manifest file, or one helm/kustomize render) is limited to 64 MiB and 10,000 documents. Exceeding either is an error for that app.
 - Discovery reads each `*.yaml`/`*.yml` file up to 64 MiB and skips larger files with a warning.
-- Non-regular files (devices, FIFOs, and symlinks to them) are skipped by discovery and are an error for raw manifest and Helm values file reads.
+- Non-regular files (devices, FIFOs, and symlinks to them) are skipped by discovery and are an error for raw manifest and Helm values file reads. A Helm values file path that is a directory is also an error.
 - Helm values files share the 64 MiB limit; exceeding it fails that app.
 - helm/kustomize subprocess stdout is capped at the same 64 MiB; the render fails with a limit error. Subprocess stderr shown in errors is truncated at 64 KiB.
 - YAML anchors/aliases: alias expansion within a stream shares a memory budget of `max(1 MiB, 10 × the stream size)`, capped at 64 MiB. A document whose aliases exceed it, or that trips the excessive-aliasing heuristic, is skipped (logged at debug level) from both render output and linting, rather than failing the app.
