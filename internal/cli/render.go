@@ -78,16 +78,16 @@ Use --output <dir> to write each app to <dir>/<appname>.yaml.`,
 					continue
 				}
 
-				var werr error
 				if output != "" && output != "-" {
-					werr = writeManifestsToFile(output, r.app, r.manifests, format)
-				} else {
-					werr = writeManifestsToWriter(cmd, r.app, r.manifests, format)
-				}
-				if werr != nil {
-					slog.Warn("failed to write output", "app", r.app.Name, "err", werr)
-					writeFailed = append(writeFailed, r.app.Name)
-					continue
+					if err := writeManifestsToFile(output, r.app, r.manifests, format); err != nil {
+						slog.Warn("failed to write output file", "app", r.app.Name, "err", err)
+						writeFailed = append(writeFailed, r.app.Name)
+						continue
+					}
+				} else if err := writeManifestsToWriter(cmd, r.app, r.manifests, format); err != nil {
+					// Stdout output cannot be cleaned up, so stop instead of
+					// appending further apps after a truncated document.
+					return fmt.Errorf("writing output for app %s: %w", r.app.Name, err)
 				}
 				rendered++
 				totalManifests += len(r.manifests)
