@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/lukashankeln/glint/internal/config"
 )
 
 var (
@@ -35,7 +37,7 @@ It auto-renders Helm charts and Kustomize overlays and enforces custom policies 
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			initLogger(cmd.ErrOrStderr())
+			initLogger(cmd.ErrOrStderr(), config.OutputColorAuto)
 			return nil
 		},
 	}
@@ -54,7 +56,7 @@ It auto-renders Helm charts and Kustomize overlays and enforces custom policies 
 	return root
 }
 
-func initLogger(w io.Writer) {
+func initLogger(w io.Writer, colorMode string) {
 	level := parseLogLevel(logLevel)
 
 	// In CI environments, default to warn to reduce noise.
@@ -62,8 +64,25 @@ func initLogger(w io.Writer) {
 		level = slog.LevelWarn
 	}
 
-	useColor := !noColor && isColorTerminal(w)
+	useColor := resolveColor(colorMode, noColor, w)
 	slog.SetDefault(slog.New(&consoleHandler{w: w, level: level, color: useColor}))
+}
+
+// resolveColor decides whether log output is colored. The --no-color flag
+// always wins; "never" disables color; "always" forces it regardless of TTY
+// and NO_COLOR; "auto" (or empty) falls back to terminal detection.
+func resolveColor(mode string, noColorFlag bool, w io.Writer) bool {
+	if noColorFlag {
+		return false
+	}
+	switch mode {
+	case config.OutputColorNever:
+		return false
+	case config.OutputColorAlways:
+		return true
+	default:
+		return isColorTerminal(w)
+	}
 }
 
 func parseLogLevel(s string) slog.Level {

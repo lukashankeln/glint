@@ -46,6 +46,7 @@ func newLintCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
 			}
+			initLogger(cmd.ErrOrStderr(), cfg.Output.Color)
 
 			// CLI flags override config values.
 			if cmd.Flags().Changed("format") {
@@ -153,7 +154,7 @@ func newLintCmd() *cobra.Command {
 			}
 
 			// For text format, append summary line to stdout (not the output file).
-			if cfg.Output.Format == "" || cfg.Output.Format == "text" {
+			if cfg.Output.Summary && (cfg.Output.Format == "" || cfg.Output.Format == "text") {
 				stdout := cmd.OutOrStdout()
 				if cfg.Output.OutputFile != "" {
 					stdout = os.Stdout

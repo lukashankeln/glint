@@ -109,3 +109,18 @@ func TestLoad_DefaultRenderTimeouts(t *testing.T) {
 	assert.Equal(t, "60s", cfg.Render.Kustomize.Timeout)
 	assert.NoError(t, cfg.Validate())
 }
+
+func TestValidate_OutputColor(t *testing.T) {
+	for _, v := range []string{"", "auto", "always", "never"} {
+		cfg := validConfig(t)
+		cfg.Output.Color = v
+		assert.NoError(t, cfg.Validate(), "%q", v)
+	}
+	for _, v := range []string{"Always", "NEVER", "on", "true"} {
+		cfg := validConfig(t)
+		cfg.Output.Color = v
+		err := cfg.Validate()
+		require.Error(t, err, "%q", v)
+		assert.Contains(t, err.Error(), fmt.Sprintf("output.color: unknown value %q (must be auto, always, or never)", v))
+	}
+}
