@@ -6,7 +6,10 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -15,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
 
+	"github.com/lukashankeln/glint/internal/config"
 	"github.com/lukashankeln/glint/internal/discovery"
 	"github.com/lukashankeln/glint/internal/fsutil"
 )
@@ -166,4 +170,94 @@ func TestCappedFS_ReadFileSymlinkToDevZero(t *testing.T) {
 	require.NoError(t, os.Symlink("/dev/zero", link))
 	_, err := cappedFS{filesys.MakeFsOnDisk()}.ReadFile(link)
 	assert.True(t, errors.Is(err, fsutil.ErrNotRegular))
+}
+
+// withRenderBound runs fn and fails the test if it does not return in time.
+func withRenderBound(t *testing.T, fn func() error) error {
+	t.Helper()
+	done := make(chan error, 1)
+	go func() { done <- fn() }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(15 * time.Second):
+		t.Fatal("render blocked past the timeout and pipe wait delay")
+		return nil
+	}
+}
+
+// orphanSetup lowers subprocessWaitDelay, points the helper at a pidfile and
+// kills the leftover grandchild on cleanup.
+func orphanSetup(t *testing.T, mode string) string {
+	t.Helper()
+	orig := subprocessWaitDelay
+	subprocessWaitDelay = 200 * time.Millisecond
+	t.Cleanup(func() { subprocessWaitDelay = orig })
+
+	pidfile := filepath.Join(t.TempDir(), "grandchild.pid")
+	t.Setenv("GLINT_TEST_PIDFILE", pidfile)
+	fakeExec(t, mode)
+	t.Cleanup(func() {
+		b, err := os.ReadFile(pidfile)
+		if err != nil {
+			return
+		}
+		if pid, err := strconv.Atoi(strings.TrimSpace(string(b))); err == nil && pid > 0 {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+		}
+	})
+	return pidfile
+}
+
+func orphanApps(t *testing.T) map[string]discovery.DiscoveredApp {
+	t.Helper()
+	return map[string]discovery.DiscoveredApp{
+		"helm":      {Name: "x", Renderer: discovery.RendererHelm, RootPath: t.TempDir()},
+		"kustomize": {Name: "x", Renderer: discovery.RendererKustomize, RootPath: t.TempDir()},
+	}
+}
+
+func orphanCfg(name, timeout string) *config.Config {
+	cfg := defaultCfg()
+	cfg.Render.SubprocessFallback = true
+	if name == "helm" {
+		cfg.Render.Helm.Timeout = timeout
+	} else {
+		cfg.Render.Kustomize.Timeout = timeout
+	}
+	return cfg
+}
+
+func TestSubprocessRenderers_TimeoutWithOrphanedChild(t *testing.T) {
+	for name, app := range orphanApps(t) {
+		t.Run(name, func(t *testing.T) {
+			pidfile := orphanSetup(t, "orphan-hang")
+			r := New(app, orphanCfg(name, "2s"))
+			err := withRenderBound(t, func() error {
+				_, err := r.Render(context.Background(), app)
+				return err
+			})
+			require.Error(t, err)
+			assert.ErrorIs(t, err, context.DeadlineExceeded)
+			assert.Contains(t, err.Error(), "timed out")
+			assert.FileExists(t, pidfile, "grandchild must have held the pipe")
+		})
+	}
+}
+
+func TestSubprocessRenderers_CleanExitWithOrphanedChild(t *testing.T) {
+	for name, app := range orphanApps(t) {
+		t.Run(name, func(t *testing.T) {
+			pidfile := orphanSetup(t, "orphan-exit")
+			r := New(app, orphanCfg(name, ""))
+			err := withRenderBound(t, func() error {
+				_, err := r.Render(context.Background(), app)
+				return err
+			})
+			require.Error(t, err)
+			assert.ErrorIs(t, err, exec.ErrWaitDelay)
+			assert.Contains(t, err.Error(), "kept its output open")
+			assert.FileExists(t, pidfile)
+		})
+	}
 }

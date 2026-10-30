@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -147,10 +148,46 @@ func TestHelperProcess(t *testing.T) {
 				os.Exit(1)
 			}
 		}
+	case "sleep":
+		_ = os.WriteFile(os.Getenv("GLINT_TEST_PIDFILE"), []byte(strconv.Itoa(os.Getpid())), 0o644)
+		time.Sleep(60 * time.Second)
+		os.Exit(0)
+	case "orphan-hang":
+		startHelperGrandchild()
+		waitHelperPidfile()
+		select {}
+	case "orphan-exit":
+		startHelperGrandchild()
+		waitHelperPidfile()
+		_, _ = os.Stdout.WriteString("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: a\n")
+		os.Exit(0)
 	case "manifest":
 		_, _ = os.Stdout.WriteString("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: a\n")
 		os.Exit(0)
 	}
+}
+
+// startHelperGrandchild re-executes the test binary in "sleep" mode with the
+// stdout/stderr this process inherited, so it holds the parent's pipes.
+func startHelperGrandchild() {
+	cmd := exec.Command(os.Args[0], "-test.run=^TestHelperProcess$")
+	cmd.Env = append(os.Environ(), "GO_WANT_HELPER_PROCESS=sleep")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		os.Exit(3)
+	}
+}
+
+// waitHelperPidfile waits (bounded) until the grandchild has written its pidfile.
+func waitHelperPidfile() {
+	for i := 0; i < 200; i++ {
+		if b, err := os.ReadFile(os.Getenv("GLINT_TEST_PIDFILE")); err == nil && len(b) > 0 {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	os.Exit(4)
 }
 
 func fakeExec(t *testing.T, mode string) {
