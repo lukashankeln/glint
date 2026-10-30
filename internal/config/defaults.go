@@ -4,7 +4,7 @@ const (
 	DefaultKubernetesVersion = "1.36.0"
 	DefaultLogLevel          = "info"
 	DefaultOutputFormat      = "text"
-	DefaultOutputColor       = "auto"
+	DefaultOutputColor       = OutputColorAuto
 	DefaultConcurrency       = 0 // 0 means runtime.NumCPU()
 )
 
