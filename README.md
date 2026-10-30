@@ -306,7 +306,7 @@ glint init [path]
 
 **Exit codes:** `0` = clean, `1` = violations found, `2` = pipeline error
 
-An app that fails to render is a `glint/render-error` violation in `glint lint`, and `glint render` exits `2` if any app fails. With `--output`, an app whose file cannot be fully written also makes `glint render` exit `2`, and the partial file is removed.
+An app that fails to render is a `glint/render-error` violation in `glint lint`, and `glint render` exits `2` if any app fails. With `--output`, an app whose file cannot be fully written also makes `glint render` exit `2`, and a partially written regular file is removed.
 
 In `glint lint`, a report file (`--output`, `--output-sarif`, `--output-junit`, `--output-json`) that cannot be fully written or closed makes the run exit `2` regardless of `fail_on`, and a partially written regular file is removed.
 

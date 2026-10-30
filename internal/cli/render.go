@@ -147,30 +147,16 @@ func writeManifests(w io.Writer, app discovery.DiscoveredApp, manifests []manife
 }
 
 // writeManifestsToFile writes the app's manifests to <dir>/<app>.yaml (or
-// .json). If anything fails after the file was created, the partial file is
-// removed (best effort) so it cannot be mistaken for complete output.
-func writeManifestsToFile(dir string, app discovery.DiscoveredApp, manifests []manifest.Manifest, format string) (err error) {
+// .json). If writing fails, a partially written regular file is removed so it
+// cannot be mistaken for complete output; a symlink, FIFO or device at the
+// output path is never removed.
+func writeManifestsToFile(dir string, app discovery.DiscoveredApp, manifests []manifest.Manifest, format string) error {
 	ext := ".yaml"
 	if format == "json" {
 		ext = ".json"
 	}
 	outPath := filepath.Join(dir, app.Name+ext)
-	f, err := os.Create(outPath)
-	if err != nil {
-		return fmt.Errorf("creating %q: %w", outPath, err)
-	}
-	defer func() {
-		if cerr := f.Close(); cerr != nil && err == nil {
-			err = fmt.Errorf("closing %q: %w", outPath, cerr)
-		}
-		if err != nil {
-			// Best effort; a failed removal must not replace the original error.
-			_ = os.Remove(outPath)
-		}
-	}()
-
-	if werr := writeManifests(f, app, manifests, format, false); werr != nil {
-		return fmt.Errorf("writing %q: %w", outPath, werr)
-	}
-	return nil
+	return writeReportFile(outPath, func(w io.Writer) error {
+		return writeManifests(w, app, manifests, format, false)
+	})
 }
