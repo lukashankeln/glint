@@ -180,7 +180,11 @@ func evalExisting(root, p string) (string, error) {
 // joinInRepo joins rel onto base and verifies the result stays inside
 // repoRoot, both lexically and after resolving symlinks. It returns the
 // lexical path, not the symlink-resolved one. A path that does not exist
-// yet is checked through its nearest existing ancestor. An empty repoRoot disables containment.
+// yet is checked through its nearest existing ancestor. An empty repoRoot
+// disables containment.
+//
+// OS errors are quoted with %q rather than wrapped, because they embed
+// repository-controlled bytes (symlink targets) that reach terminal output.
 func joinInRepo(repoRoot, base, rel string) (string, error) {
 	p := filepath.Clean(filepath.Join(base, rel))
 	if repoRoot == "" {
@@ -191,14 +195,14 @@ func joinInRepo(repoRoot, base, rel string) (string, error) {
 	}
 	resolved, err := evalExisting(repoRoot, p)
 	if err != nil {
-		return "", fmt.Errorf("resolving symlinks: %w", err)
+		return "", fmt.Errorf("resolving symlinks: %q", err.Error())
 	}
 	if resolved == "" {
 		return p, nil // nothing on disk to resolve
 	}
 	resolvedRoot, err := filepath.EvalSymlinks(repoRoot)
 	if err != nil {
-		return "", fmt.Errorf("resolving repository root: %w", err)
+		return "", fmt.Errorf("resolving repository root: %q", err.Error())
 	}
 	if !within(resolvedRoot, resolved) {
 		return "", errOutsideRepo
