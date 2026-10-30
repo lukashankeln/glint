@@ -129,7 +129,7 @@ Add to `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/lukashankeln/glint
-    rev: v0.2.3
+    rev: v0.2.9
     hooks:
       - id: glint         # builds from source, requires Go
       # - id: glint-docker  # uses the published container image, requires Docker
