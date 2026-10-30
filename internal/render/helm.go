@@ -184,7 +184,8 @@ func (r *HelmRenderer) renderSDK(ctx context.Context, app discovery.DiscoveredAp
 // config of its own to apply, so skipping scanReposForURL costs nothing here.
 //
 // loadRepoIndexCached fetches and parses a given repo's index at most once
-// per process; only the final chart content fetch below runs per app.
+// per render pass (until CleanupHelmRepoCache); only the final chart content
+// fetch below runs per app.
 func loadRemoteChart(ctx context.Context, repoURL, name, version string, settings *helmenv.EnvSettings) (chart.Charter, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -269,8 +270,8 @@ func fetchChartArchive(chartURL, digestString string, getters getter.Providers, 
 }
 
 // repoIndexCache memoizes parsed Helm chart-repo indexes keyed by repo URL,
-// shared by every HelmRenderer in the process (each app gets its own
-// HelmRenderer instance, so a renderer-scoped cache would not help). A failed
+// shared by every HelmRenderer until CleanupHelmRepoCache (each app gets its
+// own HelmRenderer instance, so a renderer-scoped cache would not help). A failed
 // fetch is cached too: within one run a repo URL that doesn't resolve won't
 // resolve for the next app either, and retrying it per app would reintroduce
 // the redundant work this cache exists to avoid.
@@ -312,28 +313,42 @@ func repoCacheName(repoURL string) string {
 }
 
 var (
-	repoIndexCacheDirOnce sync.Once
+	repoIndexCacheMu      sync.Mutex
 	repoIndexCacheDirPath string
-	repoIndexCacheDirErr  error
 )
 
-// repoIndexCacheDir returns a process-lifetime temp directory for downloaded
-// repo indexes, created on first use. Kept separate from the user's real Helm
-// repository cache so this never writes into shared Helm state.
+// repoIndexCacheDir returns the temp directory for downloaded repo indexes,
+// creating it on first use after process start or after CleanupHelmRepoCache.
+// Kept separate from the user's real Helm repository cache so this never
+// writes into shared Helm state. A creation failure is returned but not
+// remembered, so a later call retries.
 func repoIndexCacheDir() (string, error) {
-	repoIndexCacheDirOnce.Do(func() {
-		repoIndexCacheDirPath, repoIndexCacheDirErr = os.MkdirTemp("", "glint-helm-repo-cache-")
-	})
-	return repoIndexCacheDirPath, repoIndexCacheDirErr
+	repoIndexCacheMu.Lock()
+	defer repoIndexCacheMu.Unlock()
+	if repoIndexCacheDirPath != "" {
+		return repoIndexCacheDirPath, nil
+	}
+	dir, err := os.MkdirTemp("", "glint-helm-repo-cache-")
+	if err != nil {
+		return "", err
+	}
+	repoIndexCacheDirPath = dir
+	return dir, nil
 }
 
 // CleanupHelmRepoCache removes the temp directory used to cache downloaded
-// chart-repo indexes across a run, if one was created. Safe to call even if
-// no remote Helm chart was ever rendered.
+// chart-repo indexes and forgets the memoized indexes, resetting the cache to
+// its initial state; the directory is recreated on demand by the next render
+// pass. Safe to call even if no remote Helm chart was ever rendered. It must
+// not run concurrently with an in-flight render pass.
 func CleanupHelmRepoCache() {
+	repoIndexCacheMu.Lock()
+	defer repoIndexCacheMu.Unlock()
 	if repoIndexCacheDirPath != "" {
 		os.RemoveAll(repoIndexCacheDirPath)
+		repoIndexCacheDirPath = ""
 	}
+	repoIndexCache.Clear()
 }
 
 // buildValues merges all values sources: chart defaults -> values files -> inline -> --set.
