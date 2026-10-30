@@ -7,11 +7,11 @@ glint auto-renders Helm charts and Kustomize overlays and enforces custom polici
 ```
 $ glint lint .
 
-[ERROR] Deployment/prod/api (apps/v1): one or more containers use the :latest image tag  [no-latest-tag]
-[ERROR] Ingress/prod/api (networking.k8s.io/v1beta1): apiVersion is deprecated or removed  [deprecated-apis]
-[WARNING] Deployment/prod/api (apps/v1): one or more containers are missing resource requests  [resource-requests]
+[ERROR] cel  Deployment/prod/api (apps/v1): One or more containers use the :latest image tag  [no-latest-tag]
+[ERROR] cel  Ingress/prod/api (networking.k8s.io/v1beta1): apiVersion networking.k8s.io/v1beta1 is deprecated or removed  [deprecated-apis]
+[WARNING] cel  Deployment/prod/api (apps/v1): One or more containers are missing resource requests  [resource-requests]
 
-2 errors, 1 warning across 47 resources
+2 errors, 1 warnings across 47 resources
 ```
 
 ---
