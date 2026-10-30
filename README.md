@@ -240,6 +240,8 @@ Plugin violations feed into the same output formatters, `fail_on` logic, and `--
 | `allow_nonzero_exit` | `false` | Suppress the eval-error violation when the plugin exits non-zero (for tools that exit 1 on findings) |
 | `env` | `{}` | Extra environment variables |
 
+Plugin stdout is capped at 32 MiB (the run fails with an output-limit error) and stderr shown in errors is truncated at 64 KiB; see [Limits](docs/configuration.md#limits).
+
 **kubeconform** — validate manifests against Kubernetes JSON schemas:
 
 ```yaml

@@ -20,6 +20,7 @@ import (
 const (
 	defaultPluginTimeout = 30 * time.Second
 	maxPluginOutputBytes = 32 * 1024 * 1024 // 32 MB
+	maxPluginStderrBytes = 64 << 10         // 64 KiB of stderr kept for errors
 )
 
 // pluginWaitDelay bounds how long a plugin's output pipes are drained after the
@@ -66,6 +67,36 @@ func (lw *limitedWriter) Write(p []byte) (int, error) {
 	}
 	// Report full len(p) consumed so the subprocess keeps writing normally.
 	return total, nil
+}
+
+// stderrWriter keeps the first maxPluginStderrBytes bytes of plugin stderr and
+// discards the rest without ever returning an error, so a chatty plugin is
+// never blocked. It is the sibling of truncatingWriter in internal/render
+// (same cap and marker); that type is unexported and plugins should not import
+// render's heavy dependencies.
+type stderrWriter struct {
+	buf       bytes.Buffer
+	truncated bool
+}
+
+// Write always reports len(p), nil.
+func (w *stderrWriter) Write(p []byte) (int, error) {
+	total := len(p)
+	room := max(maxPluginStderrBytes-w.buf.Len(), 0)
+	if len(p) > room {
+		w.truncated = true
+		p = p[:room]
+	}
+	w.buf.Write(p)
+	return total, nil
+}
+
+// String returns the kept stderr, with a marker if anything was dropped.
+func (w *stderrWriter) String() string {
+	if w.truncated {
+		return w.buf.String() + "\n[stderr truncated]"
+	}
+	return w.buf.String()
 }
 
 // Runner is a subprocess-backed Plugin.
@@ -234,14 +265,14 @@ func (r *Runner) buildCmd(ctx context.Context, args []string) *exec.Cmd {
 func (r *Runner) collectOutput(cmd *exec.Cmd) ([]byte, error) {
 	lw := &limitedWriter{remaining: maxPluginOutputBytes}
 	cmd.Stdout = lw
-	var stderrBuf bytes.Buffer
-	cmd.Stderr = &stderrBuf
+	stderr := &stderrWriter{}
+	cmd.Stderr = stderr
 	cmd.WaitDelay = pluginWaitDelay
 	err := cmd.Run()
 	if lw.truncated {
 		return lw.buf.Bytes(), errOutputTruncated
 	}
-	return lw.buf.Bytes(), wrapRunErr(err, stderrBuf.Bytes())
+	return lw.buf.Bytes(), wrapRunErr(err, []byte(stderr.String()))
 }
 
 func wrapRunErr(err error, stderr []byte) error {
