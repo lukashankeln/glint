@@ -58,6 +58,7 @@ func TestMain(m *testing.M) {
 	case "orphan-exit":
 		startHelperGrandchild()
 		waitHelperPidfile()
+		_, _ = os.Stderr.WriteString("orphan-exit stderr marker")
 		_, _ = os.Stdout.WriteString(`[]`)
 		os.Exit(0)
 	}
