@@ -93,6 +93,7 @@ func TestRunner_CleanExitWithOrphanedChild(t *testing.T) {
 			require.Error(t, err)
 			assert.ErrorIs(t, err, exec.ErrWaitDelay)
 			assert.Contains(t, err.Error(), "kept its output open")
+			assert.Contains(t, err.Error(), "orphan-exit stderr marker")
 			assert.FileExists(t, pidfile)
 		})
 	}
