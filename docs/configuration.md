@@ -109,6 +109,8 @@ render:
   subprocess_fallback: false       # Fall back to helm/kustomize binary on SDK error
 ```
 
+With `subprocess_fallback`, when the timeout expires the helm/kustomize process is killed and its output pipes are closed after a short grace period, so a leftover child process cannot hold the render open. A child process that still holds the output open after helm/kustomize has exited fails the render.
+
 ### Limits
 
 These limits are built in and not configurable.

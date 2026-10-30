@@ -2,7 +2,9 @@ package render
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os/exec"
 
 	"github.com/lukashankeln/glint/internal/discovery"
 	"github.com/lukashankeln/glint/internal/manifest"
@@ -54,6 +56,7 @@ func renderHelmSubprocess(ctx context.Context, app discovery.DiscoveredApp, apiV
 	stderr := &truncatingWriter{}
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
+	cmd.WaitDelay = subprocessWaitDelay
 
 	runErr := cmd.Run()
 	// Check the cap first, whatever Run returned: on a writer error os/exec
@@ -64,6 +67,10 @@ func renderHelmSubprocess(ctx context.Context, app discovery.DiscoveredApp, apiV
 	if stdout.exceeded {
 		return nil, fmt.Errorf("helm template output for %q exceeds the %d-byte limit: %w",
 			app.Name, stdout.limit, errOutputLimit)
+	}
+	if errors.Is(runErr, exec.ErrWaitDelay) && ctx.Err() == nil {
+		return nil, fmt.Errorf("helm template for %q exited but a child process kept its output open: %w\nstderr: %s",
+			app.Name, runErr, stderr.String())
 	}
 	if err := runErr; err != nil {
 		return nil, fmt.Errorf("helm template subprocess failed for %q: %w\nstderr: %s",

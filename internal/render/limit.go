@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"time"
 
 	"github.com/lukashankeln/glint/internal/fsutil"
 )
@@ -15,6 +16,12 @@ var errOutputLimit = errors.New("subprocess output over limit")
 
 // execCommandContext is exec.CommandContext, replaceable in tests.
 var execCommandContext = exec.CommandContext
+
+// subprocessWaitDelay bounds how long the output pipes of a helm/kustomize
+// subprocess are drained after the child exits or the context is done, so a
+// grandchild that inherited the pipes cannot hold cmd.Run open. It is a
+// package var so tests can lower it.
+var subprocessWaitDelay = 2 * time.Second
 
 // stderrKeep is how much subprocess stderr truncatingWriter retains.
 const stderrKeep = 64 << 10
