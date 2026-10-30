@@ -3,6 +3,8 @@ package plugins
 import (
 	"context"
 	"os"
+	"os/exec"
+	"strconv"
 	"testing"
 	"time"
 
@@ -45,8 +47,44 @@ func TestMain(m *testing.M) {
 	case "hang":
 		time.Sleep(10 * time.Second)
 		os.Exit(0)
+	case "sleep":
+		_ = os.WriteFile(os.Getenv("GLINT_TEST_PIDFILE"), []byte(strconv.Itoa(os.Getpid())), 0o644)
+		time.Sleep(60 * time.Second)
+		os.Exit(0)
+	case "orphan-hang":
+		startHelperGrandchild()
+		waitHelperPidfile()
+		select {}
+	case "orphan-exit":
+		startHelperGrandchild()
+		waitHelperPidfile()
+		_, _ = os.Stdout.WriteString(`[]`)
+		os.Exit(0)
 	}
 	os.Exit(m.Run())
+}
+
+// startHelperGrandchild re-executes the test binary in "sleep" mode with the
+// stdout/stderr this process inherited, so it holds the parent's pipes.
+func startHelperGrandchild() {
+	cmd := exec.Command(os.Args[0])
+	cmd.Env = append(os.Environ(), "GLINT_PLUGIN_TEST_MODE=sleep")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		os.Exit(3)
+	}
+}
+
+// waitHelperPidfile waits (bounded) until the grandchild has written its pidfile.
+func waitHelperPidfile() {
+	for i := 0; i < 200; i++ {
+		if b, err := os.ReadFile(os.Getenv("GLINT_TEST_PIDFILE")); err == nil && len(b) > 0 {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	os.Exit(4)
 }
 
 var testManifests = []manifest.Manifest{
