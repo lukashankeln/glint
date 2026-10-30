@@ -6,13 +6,23 @@ import (
 	"fmt"
 	"os/exec"
 
+	"github.com/lukashankeln/glint/internal/config"
 	"github.com/lukashankeln/glint/internal/discovery"
 	"github.com/lukashankeln/glint/internal/manifest"
 )
 
 // renderKustomizeSubprocess renders a Kustomize overlay using the `kustomize build` CLI command.
-func renderKustomizeSubprocess(ctx context.Context, app discovery.DiscoveredApp) ([]manifest.Manifest, error) {
-	cmd := execCommandContext(ctx, "kustomize", "build", app.RootPath)
+func renderKustomizeSubprocess(ctx context.Context, cfg *config.Config, app discovery.DiscoveredApp) ([]manifest.Manifest, error) {
+	restrictor := "LoadRestrictionsRootOnly"
+	if cfg.Render.Kustomize.LoadRestrictor == config.LoadRestrictorNone {
+		restrictor = "LoadRestrictionsNone"
+	}
+	args := []string{"build", "--load-restrictor", restrictor}
+	if cfg.Render.Kustomize.EnableHelm {
+		args = append(args, "--enable-helm")
+	}
+	args = append(args, app.RootPath)
+	cmd := execCommandContext(ctx, "kustomize", args...)
 	stdout := &cappedBuffer{limit: maxStreamBytes}
 	stderr := &truncatingWriter{}
 	cmd.Stdout = stdout

@@ -126,8 +126,22 @@ func kustApp(t *testing.T, kustomization string) (string, discovery.DiscoveredAp
 
 func renderKust(t *testing.T, app discovery.DiscoveredApp) error {
 	t.Helper()
+	return renderKustWith(t, defaultCfg(), app)
+}
+
+// renderKustUnrestricted renders with load_restrictor none, so tests of the
+// read cap reach the file read instead of stopping at the load restrictor.
+func renderKustUnrestricted(t *testing.T, app discovery.DiscoveredApp) error {
+	t.Helper()
+	cfg := defaultCfg()
+	cfg.Render.Kustomize.LoadRestrictor = config.LoadRestrictorNone
+	return renderKustWith(t, cfg, app)
+}
+
+func renderKustWith(t *testing.T, cfg *config.Config, app discovery.DiscoveredApp) error {
+	t.Helper()
 	return withDeadline(t, func() error {
-		_, err := newKustomizeRenderer(defaultCfg()).renderSDK(context.Background(), app)
+		_, err := newKustomizeRenderer(cfg).renderSDK(context.Background(), app)
 		return err
 	})
 }
@@ -135,16 +149,23 @@ func renderKust(t *testing.T, app discovery.DiscoveredApp) error {
 func TestKustomizeSDK_SymlinkToDevZeroResource(t *testing.T) {
 	dir, app := kustApp(t, "resources:\n- z.yaml\n")
 	require.NoError(t, os.Symlink("/dev/zero", filepath.Join(dir, "z.yaml")))
-	err := renderKust(t, app)
+	err := renderKustUnrestricted(t, app)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not a regular file")
 }
 
 func TestKustomizeSDK_AbsoluteDevZeroResource(t *testing.T) {
 	_, app := kustApp(t, "resources:\n- /dev/zero\n")
-	err := renderKust(t, app)
+	err := renderKustUnrestricted(t, app)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not a regular file")
+}
+
+func TestKustomizeSDK_AbsoluteDevZeroResourceRootOnly(t *testing.T) {
+	_, app := kustApp(t, "resources:\n- /dev/zero\n")
+	err := renderKust(t, app)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is not in or below")
 }
 
 func TestKustomizeSDK_FIFOResource(t *testing.T) {

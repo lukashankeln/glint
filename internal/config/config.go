@@ -14,6 +14,12 @@ const (
 	OnEvalErrorWarning = "warning"
 )
 
+// Kustomize load restrictor values for render.kustomize.load_restrictor.
+const (
+	LoadRestrictorRootOnly = "rootOnly"
+	LoadRestrictorNone     = "none"
+)
+
 // Config is the top-level configuration structure populated from glint.yaml.
 type Config struct {
 	Version   string          `yaml:"version"`
@@ -209,7 +215,7 @@ func defaultConfig() *Config {
 			},
 			Kustomize: KustomizeRenderConfig{
 				EnableHelm:     false,
-				LoadRestrictor: "rootOnly",
+				LoadRestrictor: LoadRestrictorRootOnly,
 				Timeout:        "60s",
 			},
 			SubprocessFallback: false,
@@ -260,6 +266,10 @@ func (c *Config) Validate() error {
 		if b.sev != "" && !ValidSeverity(b.sev) {
 			return fmt.Errorf("rules.built_in.%s: unknown severity %q (must be error, warning, or info)", b.name, b.sev)
 		}
+	}
+
+	if lr := c.Render.Kustomize.LoadRestrictor; lr != "" && lr != LoadRestrictorRootOnly && lr != LoadRestrictorNone {
+		return fmt.Errorf("render.kustomize.load_restrictor: unknown value %q (must be rootOnly or none)", lr)
 	}
 
 	for _, t := range []struct{ name, val string }{

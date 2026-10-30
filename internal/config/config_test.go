@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -84,6 +85,21 @@ func TestValidate_RenderTimeouts(t *testing.T) {
 			require.Error(t, err, "%s %q", field, v)
 			assert.Contains(t, err.Error(), field)
 		}
+	}
+}
+
+func TestValidate_KustomizeLoadRestrictor(t *testing.T) {
+	for _, v := range []string{"", "rootOnly", "none"} {
+		cfg := validConfig(t)
+		cfg.Render.Kustomize.LoadRestrictor = v
+		assert.NoError(t, cfg.Validate(), "%q", v)
+	}
+	for _, v := range []string{"RootOnly", "None", "LoadRestrictionsNone", "off"} {
+		cfg := validConfig(t)
+		cfg.Render.Kustomize.LoadRestrictor = v
+		err := cfg.Validate()
+		require.Error(t, err, "%q", v)
+		assert.Contains(t, err.Error(), fmt.Sprintf("render.kustomize.load_restrictor: unknown value %q (must be rootOnly or none)", v))
 	}
 }
 
