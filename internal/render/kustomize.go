@@ -67,7 +67,10 @@ func (c cappedFS) ReadFile(path string) ([]byte, error) {
 
 // kustomizeOptions maps render.kustomize settings onto krusty options. The
 // helm plugin config is built by hand instead of types.EnabledPluginConfig so
-// that only builtin plugins load (no exec or Go plugins) while helmCharts work.
+// that only builtin kustomize plugins load (no exec or Go plugins) while
+// helmCharts work. This does not sandbox helm itself: an overlay controls
+// helm's config/data home and chart home, so enable_helm is only safe for
+// trusted repositories (see docs/configuration.md).
 func kustomizeOptions(cfg *config.Config) *krusty.Options {
 	opts := krusty.MakeDefaultOptions()
 	opts.LoadRestrictions = types.LoadRestrictionsRootOnly
