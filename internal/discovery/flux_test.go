@@ -202,3 +202,51 @@ spec:
 		}
 	}
 }
+
+func fluxHelmReleaseChartDoc(chart string) []byte {
+	return []byte(`apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: rel
+  namespace: apps
+spec:
+  chart:
+    spec:
+      chart: ` + chart + `
+      sourceRef:
+        kind: GitRepository
+        name: flux-system
+        namespace: flux-system
+`)
+}
+
+func TestParseFluxKustomization_PathContainment(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(root, "ks.yaml")
+
+	_, err := parseFluxKustomization([]byte(fluxKustomizationDoc("apps", "../../outside", "GitRepository", "flux-system")), root, src, fluxResolver{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `Flux Kustomization "apps"`)
+	assert.Contains(t, err.Error(), `spec.path "../../outside"`)
+
+	for _, p := range []string{`"."`, `""`, "./apps"} {
+		app, err := parseFluxKustomization([]byte(fluxKustomizationDoc("apps", p, "GitRepository", "flux-system")), root, src, fluxResolver{})
+		require.NoError(t, err, p)
+		require.NotNil(t, app, p)
+	}
+}
+
+func TestParseFluxHelmRelease_ChartContainment(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(root, "rel.yaml")
+
+	_, err := parseFluxHelmRelease(fluxHelmReleaseChartDoc("../outside"), root, src, fluxResolver{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `Flux HelmRelease "rel"`)
+	assert.Contains(t, err.Error(), `chart "../outside"`)
+
+	app, err := parseFluxHelmRelease(fluxHelmReleaseChartDoc("./charts/app"), root, src, fluxResolver{})
+	require.NoError(t, err)
+	require.NotNil(t, app)
+	assert.Equal(t, filepath.Join(root, "charts", "app"), app.RootPath)
+}

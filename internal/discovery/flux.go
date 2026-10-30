@@ -3,7 +3,6 @@ package discovery
 import (
 	"fmt"
 	"log/slog"
-	"path/filepath"
 	"strings"
 
 	"sigs.k8s.io/yaml"
@@ -242,7 +241,11 @@ func parseFluxHelmRelease(raw []byte, repoRoot, sourceFile string, res fluxResol
 		return nil, nil
 	}
 
-	app.RootPath = filepath.Clean(filepath.Join(repoRoot, spec.Chart))
+	chartPath, err := joinInRepo(repoRoot, repoRoot, spec.Chart)
+	if err != nil {
+		return nil, fmt.Errorf("Flux HelmRelease %q: chart %q: %w", name, spec.Chart, err)
+	}
+	app.RootPath = chartPath
 	app.ValuesFiles = discoverValuesFiles(app.RootPath)
 	return app, nil
 }
@@ -276,7 +279,10 @@ func parseFluxKustomization(raw []byte, repoRoot, sourceFile string, res fluxRes
 		path = "."
 	}
 
-	rootPath := filepath.Clean(filepath.Join(repoRoot, path))
+	rootPath, err := joinInRepo(repoRoot, repoRoot, path)
+	if err != nil {
+		return nil, fmt.Errorf("Flux Kustomization %q: spec.path %q: %w", name, ks.Spec.Path, err)
+	}
 	namespace := ks.Spec.TargetNamespace
 	if namespace == "" {
 		namespace = ks.Metadata.Namespace
