@@ -41,6 +41,7 @@ Use --output <dir> to write each app to <dir>/<appname>.yaml.`,
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
 			}
+			initLogger(cmd.ErrOrStderr(), cfg.Output.Color)
 
 			apps, _, err := discovery.Discover(cmd.Context(), paths, cfg)
 			if err != nil {

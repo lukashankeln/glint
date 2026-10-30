@@ -34,6 +34,7 @@ func newRulesListCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
 			}
+			initLogger(cmd.ErrOrStderr(), cfg.Output.Color)
 
 			engine, err := rules.NewEngine(cfg.Rules)
 			if err != nil {

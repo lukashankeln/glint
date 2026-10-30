@@ -14,6 +14,13 @@ const (
 	OnEvalErrorWarning = "warning"
 )
 
+// Output color modes for output.color.
+const (
+	OutputColorAuto   = "auto"
+	OutputColorAlways = "always"
+	OutputColorNever  = "never"
+)
+
 // Kustomize load restrictor values for render.kustomize.load_restrictor.
 const (
 	LoadRestrictorRootOnly = "rootOnly"
@@ -266,6 +273,10 @@ func (c *Config) Validate() error {
 		if b.sev != "" && !ValidSeverity(b.sev) {
 			return fmt.Errorf("rules.built_in.%s: unknown severity %q (must be error, warning, or info)", b.name, b.sev)
 		}
+	}
+
+	if oc := c.Output.Color; oc != "" && oc != OutputColorAuto && oc != OutputColorAlways && oc != OutputColorNever {
+		return fmt.Errorf("output.color: unknown value %q (must be auto, always, or never)", oc)
 	}
 
 	if lr := c.Render.Kustomize.LoadRestrictor; lr != "" && lr != LoadRestrictorRootOnly && lr != LoadRestrictorNone {

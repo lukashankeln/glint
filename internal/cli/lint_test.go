@@ -312,3 +312,24 @@ func TestLint_SummaryWriteFailureFailsRun(t *testing.T) {
 		assert.Contains(t, err.Error(), "disk on fire")
 	})
 }
+
+// TestLint_SummaryLineConfig checks that output.summary gates the text
+// summary line and defaults to on.
+func TestLint_SummaryLineConfig(t *testing.T) {
+	run := func(t *testing.T, cfgYAML string) string {
+		dir := lintFixture(t)
+		cfgPath := filepath.Join(dir, "glint.yaml")
+		require.NoError(t, os.WriteFile(cfgPath, []byte(cfgYAML), 0o644))
+		var buf bytes.Buffer
+		cmd := newLintCmd()
+		cmd.SetOut(&buf)
+		cmd.SetErr(&bytes.Buffer{})
+		cmd.SetArgs([]string{"--format", "text", dir})
+		require.NoError(t, cmd.Execute())
+		return buf.String()
+	}
+
+	assert.Contains(t, run(t, "fail_on: [error]\n"), "0 errors, 0 warnings across")
+	assert.Contains(t, run(t, "output:\n  summary: true\n"), "0 errors, 0 warnings across")
+	assert.NotContains(t, run(t, "output:\n  summary: false\n"), "errors,")
+}

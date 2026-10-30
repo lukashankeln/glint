@@ -33,6 +33,7 @@ Useful for debugging discovery configuration before running a full lint.`,
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
 			}
+			initLogger(cmd.ErrOrStderr(), cfg.Output.Color)
 
 			apps, _, err := discovery.Discover(cmd.Context(), paths, cfg)
 			if err != nil {
