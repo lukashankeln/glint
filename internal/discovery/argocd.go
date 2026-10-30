@@ -103,7 +103,11 @@ func parseArgoCDApplication(raw []byte, repoRoot, sourceFile string, repoURLs ma
 	var rootPath string
 	switch {
 	case sourcePath != "":
-		rootPath = filepath.Clean(filepath.Join(repoRoot, sourcePath))
+		p, err := joinInRepo(repoRoot, repoRoot, sourcePath)
+		if err != nil {
+			return nil, fmt.Errorf("ArgoCD Application %q: spec.source.path %q: %w", name, sourcePath, err)
+		}
+		rootPath = p
 	case repoRoot != "":
 		rootPath = repoRoot
 	default:
@@ -133,7 +137,10 @@ func parseArgoCDApplication(raw []byte, repoRoot, sourceFile string, repoURLs ma
 		}
 		// Explicit valueFiles from the Application spec
 		for _, vf := range app.Spec.Source.Helm.ValueFiles {
-			abs := filepath.Clean(filepath.Join(rootPath, vf))
+			abs, err := joinInRepo(repoRoot, rootPath, vf)
+			if err != nil {
+				return nil, fmt.Errorf("ArgoCD Application %q: spec.source.helm.valueFiles %q: %w", name, vf, err)
+			}
 			discovered.ValuesFiles = append(discovered.ValuesFiles, abs)
 		}
 		// Fall back to discovering values files on disk if none specified

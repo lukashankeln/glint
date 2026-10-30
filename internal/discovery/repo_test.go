@@ -162,3 +162,40 @@ func TestGitConfigPath(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+func TestJoinInRepo(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "apps", "a"), 0o755))
+
+	tests := []struct {
+		name, base, rel string
+		want            string
+		wantErr         bool
+	}{
+		{"inside", root, "apps/a", filepath.Join(root, "apps", "a"), false},
+		{"dot", root, ".", root, false},
+		{"in-repo dotdot", filepath.Join(root, "apps", "a"), "../../apps", filepath.Join(root, "apps"), false},
+		{"escape", root, "../x", "", true},
+		{"deep escape", filepath.Join(root, "apps"), "../../../etc", "", true},
+		{"absolute rel stays under root", root, "/etc/passwd", filepath.Join(root, "etc", "passwd"), false},
+		{"nonexistent inside", root, "missing/dir", filepath.Join(root, "missing", "dir"), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := joinInRepo(root, tt.base, tt.rel)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.ErrorIs(t, err, errOutsideRepo)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+
+	t.Run("empty repoRoot disables containment", func(t *testing.T) {
+		got, err := joinInRepo("", "/a/b", "../../../x")
+		require.NoError(t, err)
+		assert.Equal(t, "/x", got)
+	})
+}

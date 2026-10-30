@@ -3,7 +3,9 @@ package discovery
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -146,4 +148,69 @@ func normalizeGitURL(raw string) string {
 		return ""
 	}
 	return strings.ToLower(host + "/" + path)
+}
+
+// errOutsideRepo is returned by joinInRepo for paths that leave the repository.
+var errOutsideRepo = errors.New("resolves outside the repository root")
+
+// evalExisting resolves symlinks in p. When p does not exist it resolves the
+// nearest existing ancestor (stopping at root) instead, so a symlinked parent
+// is still caught. It returns "" when nothing up to root exists. A dangling
+// symlink exists for Lstat but fails to resolve, so it is an error.
+func evalExisting(root, p string) (string, error) {
+	r, err := filepath.EvalSymlinks(p)
+	if err == nil {
+		return r, nil
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		return "", err
+	}
+	for q := p; ; q = filepath.Dir(q) {
+		if _, lerr := os.Lstat(q); lerr == nil {
+			return filepath.EvalSymlinks(q)
+		} else if !errors.Is(lerr, fs.ErrNotExist) {
+			return "", lerr
+		}
+		if q == root || filepath.Dir(q) == q {
+			return "", nil
+		}
+	}
+}
+
+// joinInRepo joins rel onto base and verifies the result stays inside
+// repoRoot, both lexically and after resolving symlinks. It returns the
+// lexical path, not the symlink-resolved one. A path that does not exist
+// yet is checked through its nearest existing ancestor. An empty repoRoot disables containment.
+func joinInRepo(repoRoot, base, rel string) (string, error) {
+	p := filepath.Clean(filepath.Join(base, rel))
+	if repoRoot == "" {
+		return p, nil
+	}
+	if !within(repoRoot, p) {
+		return "", errOutsideRepo
+	}
+	resolved, err := evalExisting(repoRoot, p)
+	if err != nil {
+		return "", fmt.Errorf("resolving symlinks: %w", err)
+	}
+	if resolved == "" {
+		return p, nil // nothing on disk to resolve
+	}
+	resolvedRoot, err := filepath.EvalSymlinks(repoRoot)
+	if err != nil {
+		return "", fmt.Errorf("resolving repository root: %w", err)
+	}
+	if !within(resolvedRoot, resolved) {
+		return "", errOutsideRepo
+	}
+	return p, nil
+}
+
+// within reports whether p equals root or lies below it.
+func within(root, p string) bool {
+	r, err := filepath.Rel(root, p)
+	if err != nil {
+		return false
+	}
+	return r != ".." && !strings.HasPrefix(r, ".."+string(filepath.Separator))
 }

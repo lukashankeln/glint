@@ -62,6 +62,8 @@ glint auto-detects the renderer for each app:
 
 When an ArgoCD Application or Flux resource renders a directory that would also be discovered on its own, the GitOps resource takes precedence, so its values, namespace and source are used. Several GitOps resources rendering the same directory are all kept.
 
+Paths in ArgoCD Applications (`spec.source.path`, `helm.valueFiles`) and Flux resources (`spec.path`, local chart paths) that resolve outside the repository root, including through symlinks, are rejected. `glint lint` reports the file as `glint/parse-error`; other commands skip the app and log the error.
+
 Flux sourceRefs are resolved against the source objects found in the scanned paths:
 - A GitRepository is treated as this repository when its URL matches, when it is `flux-system/flux-system` (created by `flux bootstrap`), or when it is not defined in the scanned paths.
 - Resources whose source is a different GitRepository, an OCIRepository (for Kustomizations) or a Bucket are skipped and logged at info level.
