@@ -41,7 +41,7 @@ func (r *KustomizeRenderer) Render(ctx context.Context, app discovery.Discovered
 
 	var manifests []manifest.Manifest
 	if r.cfg.Render.SubprocessFallback {
-		manifests, err = renderKustomizeSubprocess(tctx, app)
+		manifests, err = renderKustomizeSubprocess(tctx, r.cfg, app)
 	} else {
 		manifests, err = runWithContext(tctx, func() ([]manifest.Manifest, error) {
 			return r.sdk(tctx, app)
@@ -65,13 +65,28 @@ func (c cappedFS) ReadFile(path string) ([]byte, error) {
 	return readFileCapped(path, maxStreamBytes)
 }
 
+// kustomizeOptions maps render.kustomize settings onto krusty options. The
+// helm plugin config is built by hand instead of types.EnabledPluginConfig so
+// that only builtin plugins load (no exec or Go plugins) while helmCharts work.
+func kustomizeOptions(cfg *config.Config) *krusty.Options {
+	opts := krusty.MakeDefaultOptions()
+	opts.LoadRestrictions = types.LoadRestrictionsRootOnly
+	if cfg.Render.Kustomize.LoadRestrictor == config.LoadRestrictorNone {
+		opts.LoadRestrictions = types.LoadRestrictionsNone
+	}
+	if cfg.Render.Kustomize.EnableHelm {
+		opts.PluginConfig = types.MakePluginConfig(
+			types.PluginRestrictionsBuiltinsOnly, types.BploUseStaticallyLinked)
+		opts.PluginConfig.HelmConfig.Enabled = true
+		opts.PluginConfig.HelmConfig.Command = "helm"
+	}
+	return opts
+}
+
 func (r *KustomizeRenderer) renderSDK(_ context.Context, app discovery.DiscoveredApp) ([]manifest.Manifest, error) {
 	fSys := cappedFS{filesys.MakeFsOnDisk()}
 
-	opts := krusty.MakeDefaultOptions()
-	opts.LoadRestrictions = types.LoadRestrictionsNone
-
-	k := krusty.MakeKustomizer(opts)
+	k := krusty.MakeKustomizer(kustomizeOptions(r.cfg))
 	resMap, err := k.Run(fSys, app.RootPath)
 	if err != nil {
 		return nil, fmt.Errorf("kustomize build %q: %w", app.RootPath, err)

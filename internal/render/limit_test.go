@@ -209,7 +209,7 @@ func TestSubprocessRenderers_OutputCap(t *testing.T) {
 			return len(ms), err
 		},
 		"kustomize": func(ctx context.Context) (int, error) {
-			ms, err := renderKustomizeSubprocess(ctx, app)
+			ms, err := renderKustomizeSubprocess(ctx, defaultCfg(), app)
 			return len(ms), err
 		},
 	}
