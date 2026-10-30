@@ -236,7 +236,7 @@ Plugin violations feed into the same output formatters, `fail_on` logic, and `--
 | `adapter` | — | Built-in adapter name (e.g. `kubeconform`) for third-party tools |
 | `severity` | — | Override severity for all violations from this plugin |
 | `input` | `stdin` | How manifests are passed: `stdin` or `file` (path appended to args) |
-| `timeout` | `30s` | Kill the plugin after this duration (e.g. `"60s"`, `"2m"`) |
+| `timeout` | `30s` | Kill the plugin after this duration (e.g. `"60s"`, `"2m"`). The plugin's output pipes are closed after a short grace period so a leftover child process cannot hold the run open; a child still holding output open after the plugin exits fails `glint lint` |
 | `allow_nonzero_exit` | `false` | Suppress the eval-error violation when the plugin exits non-zero (for tools that exit 1 on findings) |
 | `env` | `{}` | Extra environment variables |
 

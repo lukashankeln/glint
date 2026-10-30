@@ -22,6 +22,11 @@ const (
 	maxPluginOutputBytes = 32 * 1024 * 1024 // 32 MB
 )
 
+// pluginWaitDelay bounds how long a plugin's output pipes are drained after the
+// plugin exits or the context is done, so a child process that inherited the
+// pipes cannot hold cmd.Run open. It is a package var so tests can lower it.
+var pluginWaitDelay = 2 * time.Second
+
 var errOutputTruncated = errors.New("output exceeded limit")
 
 // nativeViolation is the JSON schema plugins emit when using the native glint protocol.
@@ -149,6 +154,11 @@ func (r *Runner) Run(ctx context.Context, manifests []manifest.Manifest) ([]rule
 		if ctx.Err() == context.DeadlineExceeded {
 			return nil, fmt.Errorf("plugin %q: timed out after %s", r.cfg.Name, timeout)
 		}
+		if errors.Is(err, exec.ErrWaitDelay) && ctx.Err() == nil {
+			// Hard error: a plugin that leaves a child holding its output open
+			// cannot be trusted, and allow_nonzero_exit must not mask it.
+			return nil, fmt.Errorf("plugin %q: exited but a child process kept its output open: %w", r.cfg.Name, err)
+		}
 		if errors.Is(err, errOutputTruncated) {
 			return nil, fmt.Errorf("plugin %q: output exceeded %d MB limit", r.cfg.Name, maxPluginOutputBytes/1024/1024)
 		}
@@ -226,6 +236,7 @@ func (r *Runner) collectOutput(cmd *exec.Cmd) ([]byte, error) {
 	cmd.Stdout = lw
 	var stderrBuf bytes.Buffer
 	cmd.Stderr = &stderrBuf
+	cmd.WaitDelay = pluginWaitDelay
 	err := cmd.Run()
 	if lw.truncated {
 		return lw.buf.Bytes(), errOutputTruncated
@@ -236,6 +247,9 @@ func (r *Runner) collectOutput(cmd *exec.Cmd) ([]byte, error) {
 func wrapRunErr(err error, stderr []byte) error {
 	if err == nil {
 		return nil
+	}
+	if errors.Is(err, exec.ErrWaitDelay) {
+		return fmt.Errorf("%w\nstderr: %s", err, strings.TrimSpace(string(stderr)))
 	}
 	if ee, ok := errors.AsType[*exec.ExitError](err); ok {
 		return fmt.Errorf("non-zero exit (%d): %s", ee.ExitCode(), strings.TrimSpace(string(stderr)))
