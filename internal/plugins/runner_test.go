@@ -1,10 +1,12 @@
 package plugins
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -28,6 +30,12 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	case "non_zero":
 		os.Stderr.WriteString("plugin crashed")
+		os.Exit(1)
+	case "stderr_flood":
+		chunk := bytes.Repeat([]byte("x"), 32<<10)
+		for range 128 { // 4 MiB
+			_, _ = os.Stderr.Write(chunk)
+		}
 		os.Exit(1)
 	case "malformed":
 		os.Stdout.WriteString(`not json at all`)
@@ -152,6 +160,21 @@ func TestRunner_NonZeroExit_Error(t *testing.T) {
 	assert.Contains(t, vs[0].Message, "could not complete evaluation")
 }
 
+func TestRunner_StderrFlood_Truncated(t *testing.T) {
+	r, err := New(config.PluginConfig{
+		Name:    "test",
+		Command: selfExe(t),
+		Env:     map[string]string{"GLINT_PLUGIN_TEST_MODE": "stderr_flood"},
+	})
+	require.NoError(t, err)
+
+	vs, err := r.Run(context.Background(), testManifests)
+	require.NoError(t, err)
+	require.Len(t, vs, 1)
+	assert.Contains(t, vs[0].Message, "[stderr truncated]")
+	assert.LessOrEqual(t, len(vs[0].Message), maxPluginStderrBytes+256)
+}
+
 func TestRunner_NonZeroExit_Allowed(t *testing.T) {
 	// allow_nonzero_exit: true — non-zero exit is expected for this plugin.
 	r, err := New(config.PluginConfig{
@@ -267,6 +290,45 @@ func TestLimitedWriter_NoTruncation(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, lw.truncated)
 	assert.Equal(t, "hello", lw.buf.String())
+}
+
+func TestStderrWriter_UnderCap(t *testing.T) {
+	w := &stderrWriter{}
+	n, err := w.Write([]byte("boom"))
+	require.NoError(t, err)
+	assert.Equal(t, 4, n)
+	assert.False(t, w.truncated)
+	assert.Equal(t, "boom", w.String())
+}
+
+func TestStderrWriter_ChunkedCrossingCap(t *testing.T) {
+	w := &stderrWriter{}
+	chunk := bytes.Repeat([]byte("a"), 24<<10)
+	for i := 0; i < 4; i++ { // 96 KiB total, cap is 64 KiB
+		n, err := w.Write(chunk)
+		require.NoError(t, err)
+		require.Equal(t, len(chunk), n)
+	}
+	assert.Equal(t, maxPluginStderrBytes, w.buf.Len())
+	assert.True(t, w.truncated)
+	s := w.String()
+	assert.True(t, strings.HasSuffix(s, "\n[stderr truncated]"))
+	assert.Equal(t, maxPluginStderrBytes+len("\n[stderr truncated]"), len(s))
+}
+
+func TestStderrWriter_DiscardsAfterFull(t *testing.T) {
+	w := &stderrWriter{}
+	n, err := w.Write(bytes.Repeat([]byte("a"), maxPluginStderrBytes))
+	require.NoError(t, err)
+	require.Equal(t, maxPluginStderrBytes, n)
+	assert.False(t, w.truncated) // exactly at cap: nothing dropped yet
+
+	n, err = w.Write([]byte("more"))
+	require.NoError(t, err)
+	assert.Equal(t, 4, n)
+	assert.True(t, w.truncated)
+	assert.Equal(t, maxPluginStderrBytes, w.buf.Len())
+	assert.NotContains(t, w.buf.String(), "more")
 }
 
 func TestRunner_DefaultTimeout(t *testing.T) {
