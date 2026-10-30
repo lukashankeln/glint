@@ -113,10 +113,11 @@ When the kustomize timeout expires, glint fails that app's render with a
   `glint/render-error`.
 - `none`: overlays may load any file on disk.
 
-Older glint versions ignored this setting and always behaved as `none`. If
-your overlays load files from outside their own directory, set
-`load_restrictor: "none"` to keep the old behaviour. Any other value is
-rejected when the config is loaded.
+Older glint versions ignored this setting: the built-in renderer always
+behaved as `none` (`subprocess_fallback` already used kustomize's `rootOnly`
+default). If your overlays load files from outside their own directory, set
+`load_restrictor: "none"` to keep the old behaviour. An empty value means
+`rootOnly`; any other value is rejected when the config is loaded.
 
 `enable_helm` lets overlays use `helmCharts:` (kustomize's
 HelmChartInflationGenerator). It needs a `helm` binary on `PATH` and applies
@@ -131,8 +132,8 @@ to both the built-in renderer and `subprocess_fallback`
 >   run plugins it contains, i.e. execute arbitrary code.
 > - `helmGlobals.chartHome` is not subject to `load_restrictor`, so an
 >   overlay can render charts from outside its root.
-> - Charts with a `repo:` are fetched with `helm pull` over the network
->   (glint otherwise renders offline) and unpacked into the chart home.
+> - Charts with a `repo:` are fetched with `helm pull` over the network and
+>   unpacked into the chart home.
 > - The `helm` process that kustomize starts is not covered by glint's
 >   render timeout or output size limit; on timeout glint stops waiting but
 >   the process may keep running.
@@ -259,11 +260,12 @@ CLI flags `--format` and `--output` override these values per-run.
 `color` applies to glint's log output on stderr (the text report itself is
 not colored). `auto` colors only when stderr is a terminal and `NO_COLOR` is
 not set, `always` colors regardless of terminal and `NO_COLOR`, and `never`
-disables color. The `--no-color` flag overrides any `color` setting. Any other
-value is rejected when the config is loaded.
+disables color. The `--no-color` flag overrides any `color` setting. An empty
+value means `auto`; any other value is rejected when the config is loaded.
 
 `summary` only controls the trailing `N errors, N warnings across N resources`
-line of `text` output; the JSON summary (`--format json`, `--output-json`) is
+line of `text` output. That line always goes to stdout, even when
+`output_file` is set. The JSON summary (`--format json`, `--output-json`) is
 always written.
 
 A report file (`--output`, `--output-sarif`, `--output-junit`, `--output-json`) that cannot be fully written or closed makes `glint lint` exit `2` regardless of `fail_on`, and a partially written regular file is removed.
