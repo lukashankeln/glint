@@ -319,8 +319,9 @@ func failsThreshold(violations []rules.Violation, failOn []string) bool {
 
 // writeReportFile creates path, writes it with write and closes it. Any write
 // or close error is returned; a partially written regular file is removed so
-// it cannot be mistaken for a complete report. Paths that are not regular
-// files (a symlink, FIFO or device such as /dev/stdout) are never removed.
+// it cannot be mistaken for complete output. Paths that are not regular files
+// (a symlink, FIFO or device such as /dev/stdout) are never removed. It is
+// shared by lint report files and render --output files.
 func writeReportFile(path string, write func(io.Writer) error) (err error) {
 	f, err := os.Create(path)
 	if err != nil {

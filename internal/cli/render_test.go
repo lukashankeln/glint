@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -167,9 +168,10 @@ func TestRender_RenderAndWriteFailuresReportedTogether(t *testing.T) {
 		"rendering failed for 1 app(s): "+renderBad+"\nwriting output failed for 1 app(s): "+writeBad)
 }
 
-// TestWriteManifestsToFile_WriteErrorRemovesPartialFile checks that a failed
-// write does not leave a partial output file behind.
-func TestWriteManifestsToFile_WriteErrorRemovesPartialFile(t *testing.T) {
+// TestWriteManifestsToFile_NonRegularNotRemoved checks that a failed write to a
+// non-regular output path (here a symlink to /dev/full) returns an error and
+// never removes the symlink.
+func TestWriteManifestsToFile_NonRegularNotRemoved(t *testing.T) {
 	if _, err := os.Stat("/dev/full"); err != nil {
 		t.Skip("/dev/full not available")
 	}
@@ -181,6 +183,27 @@ func TestWriteManifestsToFile_WriteErrorRemovesPartialFile(t *testing.T) {
 	err := writeManifestsToFile(dir, app, []manifest.Manifest{testConfigMapManifest("x")}, "yaml")
 
 	require.Error(t, err)
+	assert.Contains(t, err.Error(), "writing")
+	fi, statErr := os.Lstat(path)
+	require.NoError(t, statErr, "symlink must not be removed")
+	assert.NotZero(t, fi.Mode()&os.ModeSymlink, "path should still be a symlink")
+}
+
+// TestWriteManifestsToFile_WriteErrorRemovesPartialFile checks that a failed
+// write to a regular output file does not leave a partial file behind.
+func TestWriteManifestsToFile_WriteErrorRemovesPartialFile(t *testing.T) {
+	dir := t.TempDir()
+	app := discovery.DiscoveredApp{Name: "partial"}
+	path := filepath.Join(dir, "partial.yaml")
+	manifests := []manifest.Manifest{
+		testConfigMapManifest("x"),
+		{APIVersion: "v1", Kind: "ConfigMap", Name: "bad", Object: map[string]any{"bad": make(chan int)}},
+	}
+
+	err := writeManifestsToFile(dir, app, manifests, "yaml")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "writing "+fmt.Sprintf("%q", path))
 	_, statErr := os.Lstat(path)
 	assert.True(t, os.IsNotExist(statErr), "partial file should be removed, got %v", statErr)
 }
