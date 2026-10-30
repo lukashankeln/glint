@@ -102,6 +102,41 @@ render:
 When the kustomize timeout expires, glint fails that app's render with a
 "timed out" error, which `glint lint` reports as a `glint/render-error` violation.
 
+`load_restrictor` controls which files an overlay may load:
+
+- `rootOnly` (default, same as `kustomize build`): files such as patches,
+  generator sources and resource files must be in or below the directory of
+  the kustomization that references them. Directory references such as
+  `resources: [../../base]` still work, because each referenced kustomization
+  directory is its own root. A file outside the root fails the render with
+  kustomize's `security; file ... is not in or below ...` error, reported as
+  `glint/render-error`.
+- `none`: overlays may load any file on disk.
+
+Older glint versions ignored this setting and always behaved as `none`. If
+your overlays load files from outside their own directory, set
+`load_restrictor: "none"` to keep the old behaviour. Any other value is
+rejected when the config is loaded.
+
+`enable_helm` lets overlays use `helmCharts:` (kustomize's
+HelmChartInflationGenerator). It needs a `helm` binary on `PATH` and applies
+to both the built-in renderer and `subprocess_fallback`
+(`kustomize build --enable-helm`).
+
+> **Only enable `enable_helm` for repositories you trust.** It has the same
+> trust model as `kustomize build --enable-helm`:
+>
+> - An overlay can point `helmGlobals.configHome` at a directory it ships,
+>   which helm uses as its config and data home, so the overlay can make helm
+>   run plugins it contains, i.e. execute arbitrary code.
+> - `helmGlobals.chartHome` is not subject to `load_restrictor`, so an
+>   overlay can render charts from outside its root.
+> - Charts with a `repo:` are fetched with `helm pull` over the network
+>   (glint otherwise renders offline) and unpacked into the chart home.
+> - The `helm` process that kustomize starts is not covered by glint's
+>   render timeout or output size limit; on timeout glint stops waiting but
+>   the process may keep running.
+
 ### Fallback
 
 ```yaml
@@ -220,6 +255,16 @@ output:
 ```
 
 CLI flags `--format` and `--output` override these values per-run.
+
+`color` applies to glint's log output on stderr (the text report itself is
+not colored). `auto` colors only when stderr is a terminal and `NO_COLOR` is
+not set, `always` colors regardless of terminal and `NO_COLOR`, and `never`
+disables color. The `--no-color` flag overrides any `color` setting. Any other
+value is rejected when the config is loaded.
+
+`summary` only controls the trailing `N errors, N warnings across N resources`
+line of `text` output; the JSON summary (`--format json`, `--output-json`) is
+always written.
 
 A report file (`--output`, `--output-sarif`, `--output-junit`, `--output-json`) that cannot be fully written or closed makes `glint lint` exit `2` regardless of `fail_on`, and a partially written regular file is removed.
 

@@ -34,8 +34,9 @@ func TestCommands_ApplyOutputColorToLogger(t *testing.T) {
 				require.NoError(t, os.WriteFile(filepath.Join(dir, "glint.yaml"),
 					[]byte("output:\n  color: "+mode+"\n"), 0o644))
 
-				// Start from the opposite of what the config requests so a
-				// missing re-init cannot pass by accident.
+				// Start from the opposite of what the config requests. Only the
+				// "always" cases guard the re-init: the root pre-run resets the
+				// logger to "auto", which is uncolored on a non-TTY writer.
 				slog.SetDefault(slog.New(&consoleHandler{w: &bytes.Buffer{}, color: !want}))
 
 				root := newRootCmd()
