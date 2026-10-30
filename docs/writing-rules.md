@@ -53,7 +53,7 @@ Every expression has access to these variables:
 | `matchesGlob` | `matchesGlob(str string, pattern string) bool` | Doublestar glob match |
 | `semverLT` | `semverLT(a string, b string) bool` | True if semver `a` is less than `b` |
 
-Standard CEL built-ins (`has()`, `size()`, `.all()`, `.any()`, `.filter()`, `string()`, `int()`, etc.) are all available.
+Standard CEL built-ins (`has()`, `size()`, `.all()`, `.exists()`, `.filter()`, `string()`, `int()`, etc.) are all available.
 
 ---
 
