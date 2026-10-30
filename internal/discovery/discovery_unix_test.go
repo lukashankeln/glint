@@ -56,10 +56,42 @@ func TestParseArgoCDApplication_SymlinkEscapeRejected(t *testing.T) {
 
 	// A dangling symlink is rejected, not skipped as nonexistent.
 	_, err = parseArgoCDApplication(argoAppDoc("dangling"), root, src, nil)
-	assert.Error(t, err)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "resolving symlinks")
 
 	// A symlink that stays inside the repo is accepted and the lexical path is kept.
 	app, err := parseArgoCDApplication(argoAppDoc("inlink"), root, src, nil)
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(root, "inlink"), app.RootPath)
+}
+
+func TestParseGitOps_SymlinkEscapeRejectedAllSites(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	require.NoError(t, os.Symlink(outside, filepath.Join(root, "link")))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "charts", "x"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "charts", "x", "Chart.yaml"), []byte("apiVersion: v2\nname: x\nversion: 0.1.0\n"), 0o644))
+	src := filepath.Join(root, "app.yaml")
+
+	_, err := parseFluxKustomization([]byte(fluxKustomizationDoc("apps", "link", "GitRepository", "flux-system")), root, src, fluxResolver{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "outside the repository root")
+
+	_, err = parseFluxHelmRelease(fluxHelmReleaseChartDoc("./link"), root, src, fluxResolver{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "outside the repository root")
+
+	_, err = parseArgoCDApplication(argoAppDoc("charts/x", "../../link/v.yaml"), root, src, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "outside the repository root")
+}
+
+func TestJoinInRepo_ErrorHasNoRawTargetBytes(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.Symlink("\x1b[2J\nevil", filepath.Join(root, "bad")))
+
+	_, err := joinInRepo(root, root, "bad")
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "\x1b")
+	assert.NotContains(t, err.Error(), "\n")
 }
