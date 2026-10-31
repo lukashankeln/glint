@@ -167,36 +167,26 @@ func newLintCmd() *cobra.Command {
 				}
 			}
 
-			// Write SARIF alongside any other format (e.g. github-actions + sarif in one run).
-			if outputSARIF != "" {
-				err := writeReportFile(outputSARIF, func(w io.Writer) error {
-					return writeSARIF(w, violations)
-				})
-				if err != nil {
-					return fmt.Errorf("writing SARIF output: %w", err)
-				}
-			}
-
-			// Write JUnit alongside any other format.
-			if outputJUnit != "" {
-				err := writeReportFile(outputJUnit, func(w io.Writer) error {
-					return writeJUnit(w, violations)
-				})
-				if err != nil {
-					return fmt.Errorf("writing JUnit output: %w", err)
-				}
-			}
-
-			// Write JSON summary if requested (for CI step output capture).
-			if outputJSON != "" {
-				s := buildSummary(violations)
-				err := writeReportFile(outputJSON, func(w io.Writer) error {
+			// Report files are written alongside any --format output, in this order;
+			// the first failure wins.
+			reports := []struct {
+				path, label string
+				write       func(io.Writer) error
+			}{
+				{outputSARIF, "SARIF output", func(w io.Writer) error { return writeSARIF(w, violations) }},
+				{outputJUnit, "JUnit output", func(w io.Writer) error { return writeJUnit(w, violations) }},
+				{outputJSON, "json summary", func(w io.Writer) error {
 					enc := json.NewEncoder(w)
 					enc.SetIndent("", "  ")
-					return enc.Encode(s)
-				})
-				if err != nil {
-					return fmt.Errorf("writing json summary: %w", err)
+					return enc.Encode(buildSummary(violations))
+				}},
+			}
+			for _, r := range reports {
+				if r.path == "" {
+					continue
+				}
+				if err := writeReportFile(r.path, r.write); err != nil {
+					return fmt.Errorf("writing %s: %w", r.label, err)
 				}
 			}
 
