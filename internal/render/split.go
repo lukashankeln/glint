@@ -441,6 +441,17 @@ func (c *converter) charge(n int) error {
 	return nil
 }
 
+// chargeIfAliased charges n bytes to the alias budget when the node being
+// converted is reached through an alias, and is a no-op otherwise. Every
+// convert case that produces output must call it: the budget is what bounds
+// alias expansion, so a case that skips it lets an alias bomb through.
+func (c *converter) chargeIfAliased(n int) error {
+	if c.aliasDepth > 0 {
+		return c.charge(n)
+	}
+	return nil
+}
+
 // Ported from gopkg.in/yaml.v3 v3.0.1 decode.go (Copyright (c) 2011-2019 Canonical Ltd,
 // Apache License 2.0, http://www.apache.org/licenses/LICENSE-2.0): the constants and
 // allowedAliasRatio are copied unchanged; the decodeCount/aliasCount/aliasDepth
@@ -685,10 +696,8 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 		if err := c.chargeIndent(indentCost * c.depth * (len(n.Content) / 2)); err != nil {
 			return nil, err
 		}
-		if c.aliasDepth > 0 {
-			if err := c.charge(aliasedMapCost + aliasedEntryCost*(len(n.Content)/2) + aliasedIndentCost*c.depth); err != nil {
-				return nil, err
-			}
+		if err := c.chargeIfAliased(aliasedMapCost + aliasedEntryCost*(len(n.Content)/2) + aliasedIndentCost*c.depth); err != nil {
+			return nil, err
 		}
 		m := make(map[string]any, len(n.Content)/2)
 		c.depth++
@@ -722,10 +731,8 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 				}
 			}
 			if !ok {
-				if c.aliasDepth > 0 {
-					if err := c.charge(aliasedKeyFormatCost); err != nil {
-						return nil, err
-					}
+				if err := c.chargeIfAliased(aliasedKeyFormatCost); err != nil {
+					return nil, err
 				}
 				var err error
 				if ks, err = formatKey(k); err != nil {
@@ -744,10 +751,8 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 		if err := c.chargeIndent(indentCost * c.depth * len(n.Content)); err != nil {
 			return nil, err
 		}
-		if c.aliasDepth > 0 {
-			if err := c.charge(aliasedSeqCost + aliasedElemCost*len(n.Content) + aliasedIndentCost*c.depth); err != nil {
-				return nil, err
-			}
+		if err := c.chargeIfAliased(aliasedSeqCost + aliasedElemCost*len(n.Content) + aliasedIndentCost*c.depth); err != nil {
+			return nil, err
 		}
 		s := make([]any, len(n.Content))
 		c.depth++
@@ -767,10 +772,8 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 				return nil, err
 			}
 		}
-		if c.aliasDepth > 0 {
-			if err := c.charge(len(n.Value) + aliasedScalarCost + aliasedIndentCost*c.depth); err != nil {
-				return nil, err
-			}
+		if err := c.chargeIfAliased(len(n.Value) + aliasedScalarCost + aliasedIndentCost*c.depth); err != nil {
+			return nil, err
 		}
 		switch n.Tag {
 		case "!!null":
@@ -779,10 +782,8 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 			}
 			return nil, nil
 		case "!!binary":
-			if c.aliasDepth > 0 {
-				if err := c.charge(aliasedBinaryCost + 3*len(n.Value)); err != nil {
-					return nil, err
-				}
+			if err := c.chargeIfAliased(aliasedBinaryCost + 3*len(n.Value)); err != nil {
+				return nil, err
 			}
 			d, err := decodeBinary(n.Value)
 			if err != nil {
@@ -799,10 +800,8 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 			if b, ok := yaml11Bools[n.Value]; ok {
 				return b, nil // e.g. `!!bool yes`, which yaml.v3 fails to decode
 			}
-			if c.aliasDepth > 0 {
-				if err := c.charge(aliasedDecodeCost + 2*len(n.Value)); err != nil {
-					return nil, err
-				}
+			if err := c.chargeIfAliased(aliasedDecodeCost + 2*len(n.Value)); err != nil {
+				return nil, err
 			}
 			var b bool
 			if err := n.Decode(&b); err != nil {
@@ -810,10 +809,8 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 			}
 			return b, nil
 		case "!!int":
-			if c.aliasDepth > 0 {
-				if err := c.charge(aliasedDecodeCost + 2*len(n.Value)); err != nil {
-					return nil, err
-				}
+			if err := c.chargeIfAliased(aliasedDecodeCost + 2*len(n.Value)); err != nil {
+				return nil, err
 			}
 			// One decode keeps the charge above accurate; yaml.v3 resolves
 			// an !!int to int, int64 or uint64 and rejects a non-integer.
@@ -831,10 +828,8 @@ func (c *converter) convert(n *yaml.Node) (any, error) {
 			}
 			return nil, fmt.Errorf("cannot decode !!int %q as an integer", n.Value)
 		case "!!float":
-			if c.aliasDepth > 0 {
-				if err := c.charge(aliasedDecodeCost + 2*len(n.Value)); err != nil {
-					return nil, err
-				}
+			if err := c.chargeIfAliased(aliasedDecodeCost + 2*len(n.Value)); err != nil {
+				return nil, err
 			}
 			var f float64
 			if err := n.Decode(&f); err != nil {

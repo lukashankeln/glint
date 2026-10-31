@@ -1421,3 +1421,18 @@ func TestIndentCharges_BoundOutputIndentation(t *testing.T) {
 		})
 	}
 }
+
+func TestChargeIfAliased(t *testing.T) {
+	left := 100
+	c := &converter{aliasBytesLeft: &left}
+	if err := c.chargeIfAliased(40); err != nil || left != 100 {
+		t.Fatalf("depth 0: err=%v left=%d, want nil and 100", err, left)
+	}
+	c.aliasDepth = 1
+	if err := c.chargeIfAliased(40); err != nil || left != 60 {
+		t.Fatalf("depth 1: err=%v left=%d, want nil and 60", err, left)
+	}
+	if err := c.chargeIfAliased(61); err != errExcessiveAliasExpansion {
+		t.Fatalf("overdraw: err=%v, want errExcessiveAliasExpansion", err)
+	}
+}
