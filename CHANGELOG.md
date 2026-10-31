@@ -1,5 +1,65 @@
 # Changelog
 
+## [0.3.0](https://github.com/lukashankeln/glint/compare/v0.2.9...v0.3.0) (2026-10-31)
+
+
+### ⚠ BREAKING CHANGES
+
+* **render:** the documented default load_restrictor "rootOnly" is now enforced. Overlays that load files outside their kustomization root fail to render unless render.kustomize.load_restrictor is set to "none".
+
+### Features
+
+* **deps:** update docker/login-action action to v4.7.0 ([4ff699a](https://github.com/lukashankeln/glint/commit/4ff699ab0bdd9f747a7573d240e899badec27c7f))
+* **deps:** update module cel.dev/cel-go to v0.33.2 ([7638477](https://github.com/lukashankeln/glint/commit/76384770318df64828674f2226273ee47f8f69a8))
+
+
+### Bug Fixes
+
+* **cli:** fail glint lint when a report file cannot be written or closed ([a75938f](https://github.com/lukashankeln/glint/commit/a75938fb375e6f36f400c198dc35a1b1b8c1ac18))
+* **cli:** fail glint render when an app's output cannot be written ([40891dd](https://github.com/lukashankeln/glint/commit/40891ddec04d8afcf93d07536e38a78c362c7a29))
+* **cli:** honour output.color and output.summary settings ([1777d1a](https://github.com/lukashankeln/glint/commit/1777d1afa574d8b23e7a0e148df8a6321d5c3130))
+* **cli:** report an unresolvable merge key as a lint error ([dcf1b04](https://github.com/lukashankeln/glint/commit/dcf1b0408f66b1e48d1a202e3f2ed3697dd3c72d))
+* **cli:** report every app render failure instead of skipping the app ([b2dce81](https://github.com/lukashankeln/glint/commit/b2dce817e8c4ed5d4d0a4c377a43691c14578b74))
+* **cli:** stop glint render at the first failed stdout write ([2c1c151](https://github.com/lukashankeln/glint/commit/2c1c1519263e99be69e883f7d9f6cb858566b1a2))
+* **deps:** update kube-the-home/github-actions action to v1.5.1 ([3e6f9a0](https://github.com/lukashankeln/glint/commit/3e6f9a06a9d92a24759f0a0ff1b44103909a8449))
+* **deps:** update module github.com/bmatcuk/doublestar/v4 to v4.10.4 ([9c302c7](https://github.com/lukashankeln/glint/commit/9c302c7e0fa42c3a4b23b74445a4c563aed2625a))
+* **discovery:** cap YAML and values file reads and skip non-regular files ([c567705](https://github.com/lukashankeln/glint/commit/c567705a327f1ae67b6802840cab2cb4b71a9baa))
+* **discovery:** quote symlink errors and pin symlink containment per site ([526ec17](https://github.com/lukashankeln/glint/commit/526ec179a6202d05b7810bf22710ca83bd191a20))
+* **discovery:** reject GitOps paths that resolve outside the repo root ([354a062](https://github.com/lukashankeln/glint/commit/354a062ea57478101517db708e805c0d0a857835))
+* **output:** emit empty SARIF arrays instead of null when there are no violations ([8ae3af1](https://github.com/lukashankeln/glint/commit/8ae3af1db2c512f153916863e7ce9c4ba6a98b94))
+* **plugins:** bound plugin subprocess stderr buffering ([0a9bd2a](https://github.com/lukashankeln/glint/commit/0a9bd2abd000af968d37fca7a0c81b5f8a05c943))
+* **plugins:** bound plugin subprocess waits with WaitDelay ([98a6148](https://github.com/lukashankeln/glint/commit/98a61484ee0b12b522db493a2a56d4a381f55f0a))
+* **render:** apply kustomize load_restrictor and enable_helm settings ([4f4af1e](https://github.com/lukashankeln/glint/commit/4f4af1ee63b5efb6e0b0a127b7d6c8b2a98496d7))
+* **render:** bound alias expansion by a per-stream byte budget ([27b2844](https://github.com/lukashankeln/glint/commit/27b28441d50b9051119f00ea4f2a54c24b0e806b))
+* **render:** bound alias expansion in nodeToValue ([68c6831](https://github.com/lukashankeln/glint/commit/68c6831fffc3a2f8c3b25da6d89b3fa32d5b396a))
+* **render:** bound render output indentation with a per-stream nesting budget ([580e510](https://github.com/lukashankeln/glint/commit/580e510af252baaf8abc492722d8e563f0d1402c))
+* **render:** bound subprocess render waits with WaitDelay ([dfd1171](https://github.com/lukashankeln/glint/commit/dfd1171538acae0783ab86e1797ba8bf5f445ff9))
+* **render:** cap kustomize SDK file reads and reject non-regular files ([3bac566](https://github.com/lukashankeln/glint/commit/3bac566d1921d03c609090bf65e14e361e5a5f05))
+* **render:** charge decoded !!binary, all YAML breaks and complex keys in the indent budget ([1396020](https://github.com/lukashankeln/glint/commit/1396020f07c5e3efea68a19203e4ece7060d730f))
+* **render:** convert merge-sequence sources in document order ([db85029](https://github.com/lukashankeln/glint/commit/db8502907ec0cdee12627e717ae0fe61a2ff3af5))
+* **render:** enforce the configured helm and kustomize render timeouts ([c312cbf](https://github.com/lukashankeln/glint/commit/c312cbfce191c215b6ded21aa9a230202949413f))
+* **render:** format numeric and null mapping keys like sigs.k8s.io/yaml ([dfd29d5](https://github.com/lukashankeln/glint/commit/dfd29d585829bc93cad88385453571dfe89a79e7))
+* **render:** give each repo-index fetch its own temp dir ([a014931](https://github.com/lukashankeln/glint/commit/a014931c0018ee3205cc42ecf384435e651b8ef1))
+* **render:** match the old pipeline for .inf/.nan, !!binary and !!null in nodeToValue ([2a1b99a](https://github.com/lukashankeln/glint/commit/2a1b99a1eec1c1f466a00c333cd4e7653b6de944))
+* **render:** name the offending chart file in limit errors and pin loader fall-through ([449ca87](https://github.com/lukashankeln/glint/commit/449ca87eaa7ae526572091a98c3fed4bc956b89c))
+* **render:** never remove non-regular output paths on write failure ([8d501f3](https://github.com/lukashankeln/glint/commit/8d501f309e755de964f6346905f02072619aa9b8))
+* **render:** Per-document alias budget and no input/document-count cap let small YAML streams retain ~1000x their size in memory ([#130](https://github.com/lukashankeln/glint/issues/130)) ([2da5abd](https://github.com/lukashankeln/glint/commit/2da5abdc1f44c696ca628afbab63408a18e55241))
+* **render:** reject a non-regular or oversized local Chart.yaml or .helmignore before Helm loads the chart ([d83916e](https://github.com/lukashankeln/glint/commit/d83916e7abaf485d88047dff0169809fe4affe55))
+* **render:** reject cross-document aliases and complex map keys in nodeToValue ([dc4e088](https://github.com/lukashankeln/glint/commit/dc4e0888c4075cd1ff835ea93e7a9838fe3f1167))
+* **render:** reset Helm repo-index cache state in CleanupHelmRepoCache ([11d25fe](https://github.com/lukashankeln/glint/commit/11d25feb149a9de6ecaa8aa7a61b6e1bfbad28a8))
+* **render:** resolve a dropped "!" tag on quoted "&lt;&lt;" keys as a merge key ([59d312c](https://github.com/lukashankeln/glint/commit/59d312cb2d628144e5fdc665c296ebcff03ba389))
+* **render:** resolve YAML 1.1 bool literals in nodeToValue like sigs.k8s.io/yaml ([9b46e33](https://github.com/lukashankeln/glint/commit/9b46e33b50bcd3ca03df20b09a0ed60f49a00dca))
+* **render:** resolve YAML merge keys and guard alias cycles in nodeToValue ([726102e](https://github.com/lukashankeln/glint/commit/726102ea117f018917616b8c89127bc4882dc410))
+* **render:** transcode UTF-16 in one pass for merge-key resolution ([ec3f1c8](https://github.com/lukashankeln/glint/commit/ec3f1c8a9ed56bde5163ebdcbef110df0f04f1e6))
+* **rules:** expose .severity to rule message templates ([78df5bb](https://github.com/lukashankeln/glint/commit/78df5bb22a53f178a87baadd35b57918f0d6e701))
+
+
+### Performance
+
+* **discovery:** resolve repository root symlinks once per scan ([595d082](https://github.com/lukashankeln/glint/commit/595d082ef2ded34a6d3a93e778962a51b89ad6ee))
+* **render:** fold anchor tracking into nodeToValue's single tree walk ([b0a4cb6](https://github.com/lukashankeln/glint/commit/b0a4cb65fe9c364edacc3272944114661f59b5da))
+* **render:** resolve Helm chart repos once per URL instead of once per app ([1ba39cd](https://github.com/lukashankeln/glint/commit/1ba39cdb25ce1c20f92b6b72803838edb600f3c4))
+
 ## [0.2.9](https://github.com/lukashankeln/glint/compare/v0.2.8...v0.2.9) (2026-10-23)
 
 
