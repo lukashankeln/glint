@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/lukashankeln/glint/internal/config"
 	"github.com/lukashankeln/glint/internal/manifest"
 	"github.com/lukashankeln/glint/internal/rules"
+	"github.com/lukashankeln/glint/internal/subproc"
 )
 
 // TestMain allows the test binary to act as a fake plugin subprocess.
@@ -37,6 +37,13 @@ func TestMain(m *testing.M) {
 			_, _ = os.Stderr.Write(chunk)
 		}
 		os.Exit(1)
+	case "stdout_flood":
+		chunk := bytes.Repeat([]byte("x"), 32<<10)
+		for {
+			if _, err := os.Stdout.Write(chunk); err != nil {
+				os.Exit(1)
+			}
+		}
 	case "malformed":
 		os.Stdout.WriteString(`not json at all`)
 		os.Exit(0)
@@ -172,7 +179,7 @@ func TestRunner_StderrFlood_Truncated(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, vs, 1)
 	assert.Contains(t, vs[0].Message, "[stderr truncated]")
-	assert.LessOrEqual(t, len(vs[0].Message), maxPluginStderrBytes+256)
+	assert.LessOrEqual(t, len(vs[0].Message), subproc.StderrKeep+256)
 }
 
 func TestRunner_NonZeroExit_Allowed(t *testing.T) {
@@ -275,62 +282,6 @@ func TestRunner_Timeout(t *testing.T) {
 	assert.Contains(t, err.Error(), "timed out")
 }
 
-func TestLimitedWriter_Truncation(t *testing.T) {
-	lw := &limitedWriter{remaining: 5}
-	n, err := lw.Write([]byte("hello world"))
-	require.NoError(t, err)
-	assert.Equal(t, 11, n) // always reports full write to caller
-	assert.True(t, lw.truncated)
-	assert.Equal(t, "hello", lw.buf.String())
-}
-
-func TestLimitedWriter_NoTruncation(t *testing.T) {
-	lw := &limitedWriter{remaining: 100}
-	_, err := lw.Write([]byte("hello"))
-	require.NoError(t, err)
-	assert.False(t, lw.truncated)
-	assert.Equal(t, "hello", lw.buf.String())
-}
-
-func TestStderrWriter_UnderCap(t *testing.T) {
-	w := &stderrWriter{}
-	n, err := w.Write([]byte("boom"))
-	require.NoError(t, err)
-	assert.Equal(t, 4, n)
-	assert.False(t, w.truncated)
-	assert.Equal(t, "boom", w.String())
-}
-
-func TestStderrWriter_ChunkedCrossingCap(t *testing.T) {
-	w := &stderrWriter{}
-	chunk := bytes.Repeat([]byte("a"), 24<<10)
-	for i := 0; i < 4; i++ { // 96 KiB total, cap is 64 KiB
-		n, err := w.Write(chunk)
-		require.NoError(t, err)
-		require.Equal(t, len(chunk), n)
-	}
-	assert.Equal(t, maxPluginStderrBytes, w.buf.Len())
-	assert.True(t, w.truncated)
-	s := w.String()
-	assert.True(t, strings.HasSuffix(s, "\n[stderr truncated]"))
-	assert.Equal(t, maxPluginStderrBytes+len("\n[stderr truncated]"), len(s))
-}
-
-func TestStderrWriter_DiscardsAfterFull(t *testing.T) {
-	w := &stderrWriter{}
-	n, err := w.Write(bytes.Repeat([]byte("a"), maxPluginStderrBytes))
-	require.NoError(t, err)
-	require.Equal(t, maxPluginStderrBytes, n)
-	assert.False(t, w.truncated) // exactly at cap: nothing dropped yet
-
-	n, err = w.Write([]byte("more"))
-	require.NoError(t, err)
-	assert.Equal(t, 4, n)
-	assert.True(t, w.truncated)
-	assert.Equal(t, maxPluginStderrBytes, w.buf.Len())
-	assert.NotContains(t, w.buf.String(), "more")
-}
-
 func TestRunner_DefaultTimeout(t *testing.T) {
 	// Verify the Runner struct carries a zero timeout when none is configured
 	// (defaultPluginTimeout is applied at call time, not stored).
@@ -348,4 +299,26 @@ func TestBuild(t *testing.T) {
 	assert.Len(t, ps, 2)
 	assert.Equal(t, "a", ps[0].Name())
 	assert.Equal(t, "b", ps[1].Name())
+}
+
+func TestRunner_StdoutFlood_OutputLimit(t *testing.T) {
+	old := maxPluginOutputBytes
+	maxPluginOutputBytes = 1 << 20
+	t.Cleanup(func() { maxPluginOutputBytes = old })
+
+	r, err := New(config.PluginConfig{
+		Name:    "flood",
+		Command: os.Args[0],
+		Env:     map[string]string{"GLINT_PLUGIN_TEST_MODE": "stdout_flood"},
+		Timeout: "20s",
+	})
+	require.NoError(t, err)
+
+	start := time.Now()
+	_, err = r.Run(context.Background(), []manifest.Manifest{{Raw: []byte("kind: Pod\n")}})
+	elapsed := time.Since(start)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "output exceeded")
+	assert.Less(t, elapsed, 10*time.Second)
 }
