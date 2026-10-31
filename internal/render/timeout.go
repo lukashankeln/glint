@@ -29,6 +29,11 @@ func withRenderTimeout(ctx context.Context, timeout string) (context.Context, co
 // download into the helm cache) until the CLI exits. Abandoned goroutines are not bounded by the caller's
 // worker pool, so many hung renders can exceed its concurrency, and a later
 // render pass (discover_api_versions) may overlap one that is still running.
+//
+// An abandoned remote-chart render still owns its private repo-index temp dir
+// and removes it itself. If the CLI exits before that goroutine finishes, that
+// one dir is left behind; it is usually empty, because helm writes the index
+// only after reading the full response.
 func runWithContext[T any](ctx context.Context, fn func() (T, error)) (T, error) {
 	type result struct {
 		val T
