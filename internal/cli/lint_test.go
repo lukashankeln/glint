@@ -255,6 +255,27 @@ func TestLint_ReportFileWriteFailureFailsRun(t *testing.T) {
 		}
 	})
 
+	t.Run("first failure wins in fixed order", func(t *testing.T) {
+		if _, err := os.Stat("/dev/full"); err != nil {
+			t.Skip("/dev/full not available")
+		}
+		dirp := t.TempDir()
+		args := []string{"--format", "json"}
+		for _, flag := range []string{"--output-json", "--output-junit", "--output-sarif"} {
+			p := filepath.Join(dirp, strings.TrimPrefix(flag, "--"))
+			require.NoError(t, os.Symlink("/dev/full", p))
+			args = append(args, flag, p)
+		}
+		cmd := newLintCmd()
+		cmd.SilenceUsage, cmd.SilenceErrors = true, true
+		cmd.SetOut(&bytes.Buffer{})
+		cmd.SetErr(&bytes.Buffer{})
+		cmd.SetArgs(append(args, dir))
+		err := cmd.Execute()
+		require.Error(t, err)
+		assert.True(t, strings.HasPrefix(err.Error(), "writing SARIF output: "), "got %q", err)
+	})
+
 	t.Run("success", func(t *testing.T) {
 		out := t.TempDir()
 		paths := map[string]string{
