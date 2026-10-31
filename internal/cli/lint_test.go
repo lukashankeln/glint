@@ -259,13 +259,13 @@ func TestLint_ReportFileWriteFailureFailsRun(t *testing.T) {
 		if _, err := os.Stat("/dev/full"); err != nil {
 			t.Skip("/dev/full not available")
 		}
-		dirp := t.TempDir()
-		args := []string{"--format", "json"}
-		for _, flag := range []string{"--output-json", "--output-junit", "--output-sarif"} {
-			p := filepath.Join(dirp, strings.TrimPrefix(flag, "--"))
-			require.NoError(t, os.Symlink("/dev/full", p))
-			args = append(args, flag, p)
-		}
+		outDir := t.TempDir()
+		sarif := filepath.Join(outDir, "out.sarif")
+		require.NoError(t, os.Symlink("/dev/full", sarif))
+		junit := filepath.Join(outDir, "out.xml")
+		summary := filepath.Join(outDir, "summary.json")
+		args := []string{"--format", "json",
+			"--output-json", summary, "--output-junit", junit, "--output-sarif", sarif}
 		cmd := newLintCmd()
 		cmd.SilenceUsage, cmd.SilenceErrors = true, true
 		cmd.SetOut(&bytes.Buffer{})
@@ -274,6 +274,11 @@ func TestLint_ReportFileWriteFailureFailsRun(t *testing.T) {
 		err := cmd.Execute()
 		require.Error(t, err)
 		assert.True(t, strings.HasPrefix(err.Error(), "writing SARIF output: "), "got %q", err)
+		// The writers after the failing one are never attempted.
+		for _, p := range []string{junit, summary} {
+			_, statErr := os.Stat(p)
+			assert.True(t, os.IsNotExist(statErr), "%s was written", p)
+		}
 	})
 
 	t.Run("success", func(t *testing.T) {

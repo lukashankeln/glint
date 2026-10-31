@@ -179,7 +179,8 @@ func evalExisting(root, p string) (string, error) {
 }
 
 // evalSymlinksRoot resolves the repository root in repoRoot.resolve. It is a
-// variable only so tests can count calls; it is used for nothing else.
+// variable only so tests can count calls; it is used for nothing else. Tests
+// that swap it must not run in parallel with anything reaching joinInRepo.
 var evalSymlinksRoot = filepath.EvalSymlinks
 
 // repoRoot is a repository root whose symlink-resolved form is computed at
@@ -209,7 +210,8 @@ func (r *repoRoot) resolve() (string, error) {
 // root, both lexically and after resolving symlinks. It returns the
 // lexical path, not the symlink-resolved one. A path that does not exist
 // yet is checked through its nearest existing ancestor. An empty root.path
-// disables containment. The root is symlink-resolved once per *repoRoot.
+// disables containment. The root is symlink-resolved once per *repoRoot, and a
+// failure to resolve it is cached too, failing every later existing-target join.
 //
 // OS errors are quoted with %q rather than wrapped, because they embed
 // repository-controlled bytes (symlink targets) that reach terminal output.
