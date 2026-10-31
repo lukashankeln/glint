@@ -184,7 +184,8 @@ func (r *HelmRenderer) renderSDK(ctx context.Context, app discovery.DiscoveredAp
 // config of its own to apply, so skipping scanReposForURL costs nothing here.
 //
 // loadRepoIndexCached fetches and parses a given repo's index at most once
-// per process; only the final chart content fetch below runs per app.
+// per renderAppsParallel call (until CleanupHelmRepoCache); only the final
+// chart content fetch below runs per app.
 func loadRemoteChart(ctx context.Context, repoURL, name, version string, settings *helmenv.EnvSettings) (chart.Charter, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -264,8 +265,8 @@ func fetchChartArchive(chartURL, digestString string, getters getter.Providers, 
 }
 
 // repoIndexCache memoizes parsed Helm chart-repo indexes keyed by repo URL,
-// shared by every HelmRenderer in the process (each app gets its own
-// HelmRenderer instance, so a renderer-scoped cache would not help). A failed
+// shared by every HelmRenderer until CleanupHelmRepoCache (each app gets its
+// own HelmRenderer instance, so a renderer-scoped cache would not help). A failed
 // fetch is cached too: within one run a repo URL that doesn't resolve won't
 // resolve for the next app either, and retrying it per app would reintroduce
 // the redundant work this cache exists to avoid. The failure cache also covers
@@ -315,6 +316,16 @@ func loadRepoIndexCached(repoURL string, getters getter.Providers) (*repo.IndexF
 func repoCacheName(repoURL string) string {
 	sum := sha256.Sum256([]byte(repoURL))
 	return "glint-" + hex.EncodeToString(sum[:8])
+}
+
+// CleanupHelmRepoCache forgets the memoized chart-repo indexes so the next
+// renderAppsParallel call fetches them again. Each fetch owns and removes its
+// own temp dir, so clearing never touches a fetch that is still in flight or
+// was abandoned by a render timeout; it only drops map entries. An abandoned
+// render that reaches the cache after the clear can still add an entry that a
+// later call reuses. Safe to call even if no remote Helm chart was rendered.
+func CleanupHelmRepoCache() {
+	repoIndexCache.Clear()
 }
 
 // buildValues merges all values sources: chart defaults -> values files -> inline -> --set.

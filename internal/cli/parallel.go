@@ -27,6 +27,8 @@ type renderResult struct {
 // gate resources on .Capabilities.APIVersions and an offline render only
 // knows the built-in APIs.
 func renderAppsParallel(ctx context.Context, apps []discovery.DiscoveredApp, cfg *config.Config) []renderResult {
+	defer render.CleanupHelmRepoCache()
+
 	results := renderAppsOnce(ctx, apps, cfg)
 	if !cfg.Render.Helm.DiscoverAPIVersions || ctx.Err() != nil {
 		return results
