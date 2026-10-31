@@ -1,18 +1,14 @@
 package render
 
 import (
-	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
-	"time"
 
 	"github.com/lukashankeln/glint/internal/fsutil"
+	"github.com/lukashankeln/glint/internal/subproc"
 )
-
-// errOutputLimit is returned by cappedBuffer.Write and wrapped by the
-// subprocess renderers when a command's stdout exceeds the stream cap.
-var errOutputLimit = errors.New("subprocess output over limit")
 
 // execCommandContext is exec.CommandContext, replaceable in tests.
 var execCommandContext = exec.CommandContext
@@ -21,10 +17,7 @@ var execCommandContext = exec.CommandContext
 // subprocess are drained after the child exits or the context is done, so a
 // grandchild that inherited the pipes cannot hold cmd.Run open. It is a
 // package var so tests can lower it.
-var subprocessWaitDelay = 2 * time.Second
-
-// stderrKeep is how much subprocess stderr truncatingWriter retains.
-const stderrKeep = 64 << 10
+var subprocessWaitDelay = subproc.DefaultWaitDelay
 
 // readFileCapped reads path through fsutil.ReadFileCapped. A file over limit
 // returns an error wrapping both errStreamTooLarge and fsutil.ErrTooLarge; a
@@ -48,52 +41,22 @@ func checkFileCapped(path string, limit int) error {
 	return err
 }
 
-// cappedBuffer collects writes up to limit bytes. The buffer is a named field,
-// not embedded, so bytes.Buffer.ReadFrom is not promoted: io.Copy would prefer
-// it and bypass the cap.
-type cappedBuffer struct {
-	buf      bytes.Buffer
-	limit    int
-	exceeded bool
-}
-
-// Write stores p unless it would take the buffer past limit, in which case
-// nothing is stored, exceeded is set and errOutputLimit is returned.
-func (c *cappedBuffer) Write(p []byte) (int, error) {
-	if c.exceeded || c.buf.Len()+len(p) > c.limit {
-		c.exceeded = true
-		return 0, errOutputLimit
+// runCappedSubprocess runs cmd with stdout capped at maxStreamBytes through
+// subproc.Run and returns its stdout. what names the command ("helm template",
+// "kustomize build") and appName the app, for error messages.
+func runCappedSubprocess(ctx context.Context, cmd *exec.Cmd, what, appName string) ([]byte, error) {
+	stdout, stderr, err := subproc.Run(cmd, maxStreamBytes, subprocessWaitDelay)
+	if errors.Is(err, subproc.ErrOutputLimit) {
+		return nil, fmt.Errorf("%s output for %q exceeds the %d-byte limit: %w",
+			what, appName, maxStreamBytes, subproc.ErrOutputLimit)
 	}
-	return c.buf.Write(p)
-}
-
-// Bytes returns the collected output.
-func (c *cappedBuffer) Bytes() []byte { return c.buf.Bytes() }
-
-// truncatingWriter keeps the first stderrKeep bytes written and discards the
-// rest without ever returning an error, so a chatty child is never blocked.
-type truncatingWriter struct {
-	buf       bytes.Buffer
-	truncated bool
-}
-
-// Write always reports len(p), nil.
-func (t *truncatingWriter) Write(p []byte) (int, error) {
-	room := stderrKeep - t.buf.Len()
-	if room < len(p) {
-		t.truncated = true
-		p2 := p[:max(room, 0)]
-		t.buf.Write(p2)
-		return len(p), nil
+	if errors.Is(err, exec.ErrWaitDelay) && ctx.Err() == nil {
+		return nil, fmt.Errorf("%s for %q exited but a child process kept its output open: %w\nstderr: %s",
+			what, appName, err, stderr)
 	}
-	t.buf.Write(p)
-	return len(p), nil
-}
-
-// String returns the kept output, with a marker if anything was dropped.
-func (t *truncatingWriter) String() string {
-	if t.truncated {
-		return t.buf.String() + "\n[stderr truncated]"
+	if err != nil {
+		return nil, fmt.Errorf("%s subprocess failed for %q: %w\nstderr: %s",
+			what, appName, err, stderr)
 	}
-	return t.buf.String()
+	return stdout, nil
 }

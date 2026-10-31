@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/lukashankeln/glint/internal/discovery"
 	"github.com/lukashankeln/glint/internal/fsutil"
+	"github.com/lukashankeln/glint/internal/subproc"
 )
 
 // Tests in this file that lower maxStreamBytes or maxStreamDocuments mutate
@@ -83,58 +83,6 @@ func TestReadFileCapped(t *testing.T) {
 	require.NoError(t, os.Symlink("/dev/zero", link))
 	_, err = readFileCapped(link, 1024)
 	assert.True(t, errors.Is(err, fsutil.ErrNotRegular))
-}
-
-func TestCappedBuffer_Write(t *testing.T) {
-	c := &cappedBuffer{limit: 4}
-	n, err := c.Write([]byte("abcd"))
-	require.NoError(t, err)
-	assert.Equal(t, 4, n)
-	assert.False(t, c.exceeded)
-	_, err = c.Write([]byte("e"))
-	assert.True(t, errors.Is(err, errOutputLimit))
-	assert.True(t, c.exceeded)
-	assert.Equal(t, "abcd", string(c.Bytes()))
-}
-
-func TestCappedBuffer_IOCopyFromPipeStopsAtCap(t *testing.T) {
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-	defer r.Close()
-	go func() {
-		defer w.Close()
-		chunk := make([]byte, 1024)
-		for i := 0; i < 64; i++ {
-			if _, err := w.Write(chunk); err != nil {
-				return
-			}
-		}
-	}()
-	c := &cappedBuffer{limit: 4096}
-	_, err = io.Copy(c, r)
-	assert.True(t, errors.Is(err, errOutputLimit))
-	assert.True(t, c.exceeded)
-	assert.LessOrEqual(t, len(c.Bytes()), 4096)
-}
-
-func TestTruncatingWriter(t *testing.T) {
-	w := &truncatingWriter{}
-	n, err := w.Write([]byte("hello"))
-	require.NoError(t, err)
-	assert.Equal(t, 5, n)
-	assert.Equal(t, "hello", w.String())
-
-	big := make([]byte, stderrKeep)
-	n, err = w.Write(big)
-	require.NoError(t, err)
-	assert.Equal(t, len(big), n)
-	n, err = w.Write([]byte("more"))
-	require.NoError(t, err)
-	assert.Equal(t, 4, n)
-	s := w.String()
-	assert.Contains(t, s, "[stderr truncated]")
-	assert.Equal(t, stderrKeep, w.buf.Len())
-	assert.True(t, strings.HasPrefix(s, "hello"))
 }
 
 // TestHelperProcess is re-executed by the subprocess tests; it is a no-op
@@ -221,7 +169,7 @@ func TestSubprocessRenderers_OutputCap(t *testing.T) {
 			defer cancel()
 			_, err := run(ctx)
 			require.Error(t, err)
-			assert.True(t, errors.Is(err, errOutputLimit), "got %v", err)
+			assert.True(t, errors.Is(err, subproc.ErrOutputLimit), "got %v", err)
 			assert.NoError(t, ctx.Err(), "must not hang until the timeout")
 		})
 		t.Run(name+"/small output", func(t *testing.T) {

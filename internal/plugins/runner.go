@@ -15,20 +15,19 @@ import (
 	"github.com/lukashankeln/glint/internal/config"
 	"github.com/lukashankeln/glint/internal/manifest"
 	"github.com/lukashankeln/glint/internal/rules"
+	"github.com/lukashankeln/glint/internal/subproc"
 )
 
-const (
-	defaultPluginTimeout = 30 * time.Second
-	maxPluginOutputBytes = 32 * 1024 * 1024 // 32 MB
-	maxPluginStderrBytes = 64 << 10         // 64 KiB of stderr kept for errors
-)
+const defaultPluginTimeout = 30 * time.Second
+
+// maxPluginOutputBytes caps plugin stdout (32 MB). It is a package var so
+// tests can lower it.
+var maxPluginOutputBytes = 32 * 1024 * 1024
 
 // pluginWaitDelay bounds how long a plugin's output pipes are drained after the
 // plugin exits or the context is done, so a child process that inherited the
 // pipes cannot hold cmd.Run open. It is a package var so tests can lower it.
-var pluginWaitDelay = 2 * time.Second
-
-var errOutputTruncated = errors.New("output exceeded limit")
+var pluginWaitDelay = subproc.DefaultWaitDelay
 
 // nativeViolation is the JSON schema plugins emit when using the native glint protocol.
 type nativeViolation struct {
@@ -41,62 +40,6 @@ type nativeViolation struct {
 		Name      string `json:"name"`
 		Namespace string `json:"namespace"`
 	} `json:"resource"`
-}
-
-// limitedWriter caps how many bytes are buffered from plugin stdout.
-type limitedWriter struct {
-	buf       bytes.Buffer
-	remaining int
-	truncated bool
-}
-
-func (lw *limitedWriter) Write(p []byte) (int, error) {
-	total := len(p)
-	if lw.remaining <= 0 {
-		lw.truncated = true
-		return total, nil
-	}
-	if len(p) > lw.remaining {
-		lw.truncated = true
-		p = p[:lw.remaining]
-	}
-	n, err := lw.buf.Write(p)
-	lw.remaining -= n
-	if err != nil {
-		return n, err
-	}
-	// Report full len(p) consumed so the subprocess keeps writing normally.
-	return total, nil
-}
-
-// stderrWriter keeps the first maxPluginStderrBytes bytes of plugin stderr and
-// discards the rest without ever returning an error, so a chatty plugin is
-// never blocked. It is the sibling of truncatingWriter in internal/render
-// (same cap and marker); that type is unexported and plugins should not import
-// render's heavy dependencies.
-type stderrWriter struct {
-	buf       bytes.Buffer
-	truncated bool
-}
-
-// Write always reports len(p), nil.
-func (w *stderrWriter) Write(p []byte) (int, error) {
-	total := len(p)
-	room := max(maxPluginStderrBytes-w.buf.Len(), 0)
-	if len(p) > room {
-		w.truncated = true
-		p = p[:room]
-	}
-	w.buf.Write(p)
-	return total, nil
-}
-
-// String returns the kept stderr, with a marker if anything was dropped.
-func (w *stderrWriter) String() string {
-	if w.truncated {
-		return w.buf.String() + "\n[stderr truncated]"
-	}
-	return w.buf.String()
 }
 
 // Runner is a subprocess-backed Plugin.
@@ -185,13 +128,13 @@ func (r *Runner) Run(ctx context.Context, manifests []manifest.Manifest) ([]rule
 		if ctx.Err() == context.DeadlineExceeded {
 			return nil, fmt.Errorf("plugin %q: timed out after %s", r.cfg.Name, timeout)
 		}
+		if errors.Is(err, subproc.ErrOutputLimit) {
+			return nil, fmt.Errorf("plugin %q: output exceeded %d MB limit", r.cfg.Name, maxPluginOutputBytes/1024/1024)
+		}
 		if errors.Is(err, exec.ErrWaitDelay) && ctx.Err() == nil {
 			// Hard error: a plugin that leaves a child holding its output open
 			// cannot be trusted, and allow_nonzero_exit must not mask it.
 			return nil, fmt.Errorf("plugin %q: exited but a child process kept its output open: %w", r.cfg.Name, err)
-		}
-		if errors.Is(err, errOutputTruncated) {
-			return nil, fmt.Errorf("plugin %q: output exceeded %d MB limit", r.cfg.Name, maxPluginOutputBytes/1024/1024)
 		}
 		if !r.cfg.AllowNonZeroExit {
 			v := rules.Violation{
@@ -263,16 +206,11 @@ func (r *Runner) buildCmd(ctx context.Context, args []string) *exec.Cmd {
 }
 
 func (r *Runner) collectOutput(cmd *exec.Cmd) ([]byte, error) {
-	lw := &limitedWriter{remaining: maxPluginOutputBytes}
-	cmd.Stdout = lw
-	stderr := &stderrWriter{}
-	cmd.Stderr = stderr
-	cmd.WaitDelay = pluginWaitDelay
-	err := cmd.Run()
-	if lw.truncated {
-		return lw.buf.Bytes(), errOutputTruncated
+	stdout, stderr, err := subproc.Run(cmd, maxPluginOutputBytes, pluginWaitDelay)
+	if errors.Is(err, subproc.ErrOutputLimit) {
+		return stdout, err
 	}
-	return lw.buf.Bytes(), wrapRunErr(err, []byte(stderr.String()))
+	return stdout, wrapRunErr(err, []byte(stderr))
 }
 
 func wrapRunErr(err error, stderr []byte) error {
