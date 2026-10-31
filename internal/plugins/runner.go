@@ -207,9 +207,7 @@ func (r *Runner) buildCmd(ctx context.Context, args []string) *exec.Cmd {
 
 func (r *Runner) collectOutput(cmd *exec.Cmd) ([]byte, error) {
 	stdout, stderr, err := subproc.Run(cmd, maxPluginOutputBytes, pluginWaitDelay)
-	if errors.Is(err, subproc.ErrOutputLimit) {
-		return stdout, err
-	}
+	// An ErrOutputLimit error passes through wrapRunErr unchanged.
 	return stdout, wrapRunErr(err, []byte(stderr))
 }
 

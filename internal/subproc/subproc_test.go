@@ -94,6 +94,20 @@ func TestTruncatingWriter(t *testing.T) {
 	assert.NotContains(t, w.buf.String(), "more")
 }
 
+func TestTruncatingWriter_ExactlyAtCap(t *testing.T) {
+	w := &TruncatingWriter{}
+	n, err := w.Write(bytes.Repeat([]byte("a"), StderrKeep))
+	require.NoError(t, err)
+	require.Equal(t, StderrKeep, n)
+	assert.NotContains(t, w.String(), "[stderr truncated]") // nothing dropped yet
+
+	n, err = w.Write([]byte("more"))
+	require.NoError(t, err)
+	assert.Equal(t, 4, n)
+	assert.True(t, strings.HasSuffix(w.String(), "\n[stderr truncated]"))
+	assert.Equal(t, StderrKeep, w.buf.Len())
+}
+
 func TestTruncatingWriter_ChunkedCrossingCap(t *testing.T) {
 	w := &TruncatingWriter{}
 	chunk := bytes.Repeat([]byte("a"), 24<<10)
