@@ -1425,14 +1425,31 @@ func TestIndentCharges_BoundOutputIndentation(t *testing.T) {
 func TestChargeIfAliased(t *testing.T) {
 	left := 100
 	c := &converter{aliasBytesLeft: &left}
-	if err := c.chargeIfAliased(40); err != nil || left != 100 {
-		t.Fatalf("depth 0: err=%v left=%d, want nil and 100", err, left)
-	}
+	require.NoError(t, c.chargeIfAliased(40))
+	assert.Equal(t, 100, left, "depth 0 must not charge")
 	c.aliasDepth = 1
-	if err := c.chargeIfAliased(40); err != nil || left != 60 {
-		t.Fatalf("depth 1: err=%v left=%d, want nil and 60", err, left)
-	}
-	if err := c.chargeIfAliased(61); err != errExcessiveAliasExpansion {
-		t.Fatalf("overdraw: err=%v, want errExcessiveAliasExpansion", err)
-	}
+	require.NoError(t, c.chargeIfAliased(40))
+	assert.Equal(t, 60, left, "depth 1 charges")
+	require.ErrorIs(t, c.chargeIfAliased(61), errExcessiveAliasExpansion)
+}
+
+// aliasCharge returns the alias budget consumed converting doc.
+func aliasCharge(t *testing.T, doc string) int {
+	t.Helper()
+	aliasB := aliasByteBudget(0)
+	indent := indentByteBudget(0)
+	_, err := nodeToValueBudget(parseNode(t, doc), &aliasB, &indent)
+	require.NoError(t, err)
+	return aliasByteBudget(0) - aliasB
+}
+
+func TestAliasedNonStringKeyChargesFormatCost(t *testing.T) {
+	// Both mappings hold one string scalar and one int scalar, so the
+	// scalar-level charges match; only the key position differs.
+	strKey := aliasCharge(t, "a: &x {k: 1}\nb: *x\n")
+	intKey := aliasCharge(t, "a: &x {1: k}\nb: *x\n")
+	assert.Equal(t, aliasedKeyFormatCost, intKey-strKey)
+
+	// Without an alias the non-string key is not charged.
+	assert.Equal(t, aliasCharge(t, "a: {k: 1}\n"), aliasCharge(t, "a: {1: k}\n"))
 }

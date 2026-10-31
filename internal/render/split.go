@@ -443,8 +443,9 @@ func (c *converter) charge(n int) error {
 
 // chargeIfAliased charges n bytes to the alias budget when the node being
 // converted is reached through an alias, and is a no-op otherwise. Every
-// convert case that produces output must call it: the budget is what bounds
-// alias expansion, so a case that skips it lets an alias bomb through.
+// alias-budget charge in convert goes through it, except merge keys, which
+// are also charged when their source is itself an alias. The budget is what
+// bounds alias expansion, so a case that skips it lets an alias bomb through.
 func (c *converter) chargeIfAliased(n int) error {
 	if c.aliasDepth > 0 {
 		return c.charge(n)
