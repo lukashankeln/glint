@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // loadRepoURLs returns the normalized URLs under which the repository at
@@ -177,30 +178,57 @@ func evalExisting(root, p string) (string, error) {
 	}
 }
 
+// evalSymlinksRoot resolves the repository root in repoRoot.resolve. It is a
+// variable only so tests can count calls; it is used for nothing else.
+var evalSymlinksRoot = filepath.EvalSymlinks
+
+// repoRoot is a repository root whose symlink-resolved form is computed at
+// most once, however many joinInRepo calls (possibly concurrent) use it.
+type repoRoot struct {
+	path     string
+	once     sync.Once
+	resolved string
+	err      error
+}
+
+// newRepoRoot returns a repoRoot for path. An empty path disables
+// containment in joinInRepo.
+func newRepoRoot(path string) *repoRoot {
+	return &repoRoot{path: path}
+}
+
+// resolve returns the symlink-resolved root, evaluating it on first use only.
+func (r *repoRoot) resolve() (string, error) {
+	r.once.Do(func() {
+		r.resolved, r.err = evalSymlinksRoot(r.path)
+	})
+	return r.resolved, r.err
+}
+
 // joinInRepo joins rel onto base and verifies the result stays inside
-// repoRoot, both lexically and after resolving symlinks. It returns the
+// root, both lexically and after resolving symlinks. It returns the
 // lexical path, not the symlink-resolved one. A path that does not exist
-// yet is checked through its nearest existing ancestor. An empty repoRoot
-// disables containment.
+// yet is checked through its nearest existing ancestor. An empty root.path
+// disables containment. The root is symlink-resolved once per *repoRoot.
 //
 // OS errors are quoted with %q rather than wrapped, because they embed
 // repository-controlled bytes (symlink targets) that reach terminal output.
-func joinInRepo(repoRoot, base, rel string) (string, error) {
+func joinInRepo(root *repoRoot, base, rel string) (string, error) {
 	p := filepath.Clean(filepath.Join(base, rel))
-	if repoRoot == "" {
+	if root.path == "" {
 		return p, nil
 	}
-	if !within(repoRoot, p) {
+	if !within(root.path, p) {
 		return "", errOutsideRepo
 	}
-	resolved, err := evalExisting(repoRoot, p)
+	resolved, err := evalExisting(root.path, p)
 	if err != nil {
 		return "", fmt.Errorf("resolving symlinks: %q", err.Error())
 	}
 	if resolved == "" {
 		return p, nil // nothing on disk to resolve
 	}
-	resolvedRoot, err := filepath.EvalSymlinks(repoRoot)
+	resolvedRoot, err := root.resolve()
 	if err != nil {
 		return "", fmt.Errorf("resolving repository root: %q", err.Error())
 	}

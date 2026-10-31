@@ -48,7 +48,7 @@ type argoApplication struct {
 //
 // Returns nil if the Application references a remote repo that cannot be
 // resolved locally.
-func parseArgoCDApplication(raw []byte, repoRoot, sourceFile string, repoURLs map[string]bool) (*DiscoveredApp, error) {
+func parseArgoCDApplication(raw []byte, root *repoRoot, sourceFile string, repoURLs map[string]bool) (*DiscoveredApp, error) {
 	var app argoApplication
 	if err := yaml.Unmarshal(raw, &app); err != nil {
 		return nil, fmt.Errorf("parsing ArgoCD Application: %w", err)
@@ -103,13 +103,13 @@ func parseArgoCDApplication(raw []byte, repoRoot, sourceFile string, repoURLs ma
 	var rootPath string
 	switch {
 	case sourcePath != "":
-		p, err := joinInRepo(repoRoot, repoRoot, sourcePath)
+		p, err := joinInRepo(root, root.path, sourcePath)
 		if err != nil {
 			return nil, fmt.Errorf("ArgoCD Application %q: spec.source.path %q: %w", name, sourcePath, err)
 		}
 		rootPath = p
-	case repoRoot != "":
-		rootPath = repoRoot
+	case root.path != "":
+		rootPath = root.path
 	default:
 		rootPath = filepath.Dir(sourceFile)
 	}
@@ -137,7 +137,7 @@ func parseArgoCDApplication(raw []byte, repoRoot, sourceFile string, repoURLs ma
 		}
 		// Explicit valueFiles from the Application spec
 		for _, vf := range app.Spec.Source.Helm.ValueFiles {
-			abs, err := joinInRepo(repoRoot, rootPath, vf)
+			abs, err := joinInRepo(root, rootPath, vf)
 			if err != nil {
 				return nil, fmt.Errorf("ArgoCD Application %q: spec.source.helm.valueFiles %q: %w", name, vf, err)
 			}

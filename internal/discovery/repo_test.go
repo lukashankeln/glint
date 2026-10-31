@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -182,7 +184,7 @@ func TestJoinInRepo(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := joinInRepo(root, tt.base, tt.rel)
+			got, err := joinInRepo(newRepoRoot(root), tt.base, tt.rel)
 			if tt.wantErr {
 				require.Error(t, err)
 				assert.ErrorIs(t, err, errOutsideRepo)
@@ -194,8 +196,37 @@ func TestJoinInRepo(t *testing.T) {
 	}
 
 	t.Run("empty repoRoot disables containment", func(t *testing.T) {
-		got, err := joinInRepo("", "/a/b", "../../../x")
+		got, err := joinInRepo(newRepoRoot(""), "/a/b", "../../../x")
 		require.NoError(t, err)
 		assert.Equal(t, "/x", got)
 	})
+}
+
+func TestJoinInRepoResolvesRootOnce(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "apps", "a"), 0o755))
+
+	var calls atomic.Int32
+	orig := evalSymlinksRoot
+	evalSymlinksRoot = func(p string) (string, error) {
+		calls.Add(1)
+		return orig(p)
+	}
+	t.Cleanup(func() { evalSymlinksRoot = orig })
+
+	rr := newRepoRoot(root)
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			got, err := joinInRepo(rr, root, "apps/a")
+			assert.NoError(t, err)
+			assert.Equal(t, filepath.Join(root, "apps", "a"), got)
+			_, err = joinInRepo(rr, root, "../x")
+			assert.ErrorIs(t, err, errOutsideRepo)
+		}()
+	}
+	wg.Wait()
+	assert.EqualValues(t, 1, calls.Load())
 }
