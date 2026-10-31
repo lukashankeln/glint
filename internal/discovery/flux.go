@@ -140,7 +140,7 @@ func (r fluxResolver) isLocalGitSource(ref fluxObjectRef, defaultNS string) (boo
 //
 // Returns nil if the chart cannot be resolved to a local path or a Helm
 // repository.
-func parseFluxHelmRelease(raw []byte, repoRoot, sourceFile string, res fluxResolver) (*DiscoveredApp, error) {
+func parseFluxHelmRelease(raw []byte, root *repoRoot, sourceFile string, res fluxResolver) (*DiscoveredApp, error) {
 	var hr fluxHelmRelease
 	if err := yaml.Unmarshal(raw, &hr); err != nil {
 		return nil, fmt.Errorf("parsing Flux HelmRelease: %w", err)
@@ -241,7 +241,7 @@ func parseFluxHelmRelease(raw []byte, repoRoot, sourceFile string, res fluxResol
 		return nil, nil
 	}
 
-	chartPath, err := joinInRepo(repoRoot, repoRoot, spec.Chart)
+	chartPath, err := joinInRepo(root, root.path, spec.Chart)
 	if err != nil {
 		return nil, fmt.Errorf("Flux HelmRelease %q: chart %q: %w", name, spec.Chart, err)
 	}
@@ -252,7 +252,7 @@ func parseFluxHelmRelease(raw []byte, repoRoot, sourceFile string, res fluxResol
 
 // parseFluxKustomization converts a Flux Kustomization document into a
 // DiscoveredApp. Returns nil if its source is not this repository.
-func parseFluxKustomization(raw []byte, repoRoot, sourceFile string, res fluxResolver) (*DiscoveredApp, error) {
+func parseFluxKustomization(raw []byte, root *repoRoot, sourceFile string, res fluxResolver) (*DiscoveredApp, error) {
 	var ks fluxKustomization
 	if err := yaml.Unmarshal(raw, &ks); err != nil {
 		return nil, fmt.Errorf("parsing Flux Kustomization: %w", err)
@@ -279,7 +279,7 @@ func parseFluxKustomization(raw []byte, repoRoot, sourceFile string, res fluxRes
 		path = "."
 	}
 
-	rootPath, err := joinInRepo(repoRoot, repoRoot, path)
+	rootPath, err := joinInRepo(root, root.path, path)
 	if err != nil {
 		return nil, fmt.Errorf("Flux Kustomization %q: spec.path %q: %w", name, ks.Spec.Path, err)
 	}

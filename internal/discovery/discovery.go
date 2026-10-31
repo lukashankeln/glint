@@ -64,9 +64,9 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 			return nil, nil, err
 		}
 
-		repoRoot := findRepoRoot(abs)
-		overrideMap := buildOverrideMap(cfg, repoRoot)
-		repoURLs := loadRepoURLs(repoRoot, cfg.Discovery.RepoAliases)
+		root := newRepoRoot(findRepoRoot(abs))
+		overrideMap := buildOverrideMap(cfg, root.path)
+		repoURLs := loadRepoURLs(root.path, cfg.Discovery.RepoAliases)
 
 		// Phase 1: Walk the directory tree.
 		// Directory-level detection (Helm charts, Kustomize overlays) must remain
@@ -126,7 +126,7 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 		}
 
 		// Phase 2: Parse all YAML files concurrently.
-		fileResults := parseFilesParallel(ctx, yamlFiles, repoRoot, repoURLs)
+		fileResults := parseFilesParallel(ctx, yamlFiles, root, repoURLs)
 
 		// Phase 3: Index the Flux source objects from all parsed files.
 		res := fluxResolver{sources: map[string]fluxSource{}, repoURLs: repoURLs}
@@ -163,9 +163,9 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 				label := "Flux HelmRelease"
 				if pf.kind == "kustomization" {
 					label = "Flux Kustomization"
-					app, err = parseFluxKustomization(pf.raw, repoRoot, pf.sourceFile, res)
+					app, err = parseFluxKustomization(pf.raw, root, pf.sourceFile, res)
 				} else {
-					app, err = parseFluxHelmRelease(pf.raw, repoRoot, pf.sourceFile, res)
+					app, err = parseFluxHelmRelease(pf.raw, root, pf.sourceFile, res)
 				}
 				if err != nil {
 					slog.Error("failed to parse "+label, "file", pf.sourceFile, "err", err)
@@ -211,7 +211,7 @@ func Discover(ctx context.Context, paths []string, cfg *config.Config) ([]Discov
 
 // parseFilesParallel reads and parses all YAML files concurrently using a
 // worker pool and returns results in file order.
-func parseFilesParallel(ctx context.Context, files []string, repoRoot string, repoURLs map[string]bool) []fileResult {
+func parseFilesParallel(ctx context.Context, files []string, root *repoRoot, repoURLs map[string]bool) []fileResult {
 	if len(files) == 0 {
 		return nil
 	}
@@ -230,7 +230,7 @@ func parseFilesParallel(ctx context.Context, files []string, repoRoot string, re
 	for range workers {
 		wg.Go(func() {
 			for j := range jobs {
-				results[j.idx] = parseFile(ctx, j.path, repoRoot, repoURLs)
+				results[j.idx] = parseFile(ctx, j.path, root, repoURLs)
 			}
 		})
 	}
@@ -248,7 +248,7 @@ func parseFilesParallel(ctx context.Context, files []string, repoRoot string, re
 // HelmRelease documents are returned as pendingReleases because their sourceRef
 // resolution requires the complete HelmRepository map, which is only available
 // after all files have been processed.
-func parseFile(ctx context.Context, path, repoRoot string, repoURLs map[string]bool) fileResult {
+func parseFile(ctx context.Context, path string, root *repoRoot, repoURLs map[string]bool) fileResult {
 	if ctx.Err() != nil {
 		return fileResult{}
 	}
@@ -299,7 +299,7 @@ func parseFile(ctx context.Context, path, repoRoot string, repoURLs map[string]b
 			if strings.ToLower(kind) == "applicationset" {
 				continue
 			}
-			app, err := parseArgoCDApplication(docBytes, repoRoot, path, repoURLs)
+			app, err := parseArgoCDApplication(docBytes, root, path, repoURLs)
 			if err != nil {
 				slog.Error("failed to parse ArgoCD Application", "file", path, "err", err)
 				result.parseErrors = append(result.parseErrors, ParseError{FilePath: path, Message: err.Error()})
