@@ -96,7 +96,7 @@ func newLintCmd() *cobra.Command {
 					return cmd.Context().Err()
 				}
 				if r.err != nil {
-					slog.Warn("render failed, reporting as error", "app", r.app.Name, "err", r.err)
+					slog.Debug("render failed, reporting as error", "app", r.app.Name)
 					if v, ok := renderErrorViolation(r); ok {
 						renderViolations = append(renderViolations, v)
 					}
