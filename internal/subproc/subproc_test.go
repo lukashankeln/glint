@@ -2,7 +2,9 @@ package subproc
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -146,4 +148,50 @@ func TestRun_NonZeroExit(t *testing.T) {
 	assert.Equal(t, 3, ee.ExitCode())
 	assert.False(t, errors.Is(err, ErrOutputLimit))
 	assert.Equal(t, "boom", stderr)
+}
+
+func TestClassifyErr(t *testing.T) {
+	limitErr := fmt.Errorf("output exceeds the 4-byte limit: %w", ErrOutputLimit)
+	waitErr := fmt.Errorf("wrapped: %w", exec.ErrWaitDelay)
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	t.Run("nil", func(t *testing.T) {
+		assert.NoError(t, ClassifyErr(context.Background(), nil, "x"))
+	})
+	t.Run("output limit unchanged without stderr", func(t *testing.T) {
+		got := ClassifyErr(context.Background(), limitErr, "x")
+		assert.Equal(t, limitErr, got)
+		assert.NotContains(t, got.Error(), "stderr")
+	})
+	t.Run("wait delay with live context", func(t *testing.T) {
+		got := ClassifyErr(context.Background(), waitErr, "x")
+		assert.ErrorIs(t, got, ErrOutputHeldOpen)
+		assert.ErrorIs(t, got, exec.ErrWaitDelay)
+		assert.Contains(t, got.Error(), "stderr: x")
+	})
+	t.Run("wait delay with cancelled context", func(t *testing.T) {
+		got := ClassifyErr(cancelled, waitErr, "x")
+		assert.NotErrorIs(t, got, ErrOutputHeldOpen)
+		assert.ErrorIs(t, got, exec.ErrWaitDelay)
+	})
+	t.Run("blank stderr omitted", func(t *testing.T) {
+		for _, s := range []string{"", " \n\t"} {
+			got := ClassifyErr(context.Background(), errors.New("boom"), s)
+			assert.NotContains(t, got.Error(), "stderr:")
+		}
+	})
+	t.Run("stderr trimmed", func(t *testing.T) {
+		got := ClassifyErr(context.Background(), errors.New("boom"), "\n msg \n")
+		assert.Equal(t, "boom\nstderr: msg", got.Error())
+	})
+}
+
+func TestClassifyErr_ExitError(t *testing.T) {
+	_, stderr, err := Run(helperCmd("fail"), 1<<10, DefaultWaitDelay)
+	got := ClassifyErr(context.Background(), err, stderr)
+	var ee *exec.ExitError
+	require.True(t, errors.As(got, &ee), "got %v", got)
+	assert.Equal(t, 3, ee.ExitCode())
+	assert.Contains(t, got.Error(), "stderr: boom")
 }

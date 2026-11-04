@@ -5,9 +5,11 @@ package subproc
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -103,4 +105,31 @@ func Run(cmd *exec.Cmd, stdoutLimit int, waitDelay time.Duration) (stdout []byte
 			fmt.Errorf("output exceeds the %d-byte limit: %w", stdoutLimit, ErrOutputLimit)
 	}
 	return out.Bytes(), errw.String(), runErr
+}
+
+// ErrOutputHeldOpen is wrapped by ClassifyErr when the command exited but a
+// child process it spawned kept the output pipes open past the wait delay.
+var ErrOutputHeldOpen = errors.New("exited but a child process kept its output open")
+
+// ClassifyErr turns an error returned by Run into the error callers report.
+// A nil err stays nil. An ErrOutputLimit error is returned unchanged. An
+// exec.ErrWaitDelay error while ctx is still live additionally wraps
+// ErrOutputHeldOpen. Any other error (including *exec.ExitError, which stays
+// in the chain) is wrapped as is. Except for ErrOutputLimit, the trimmed
+// stderr is appended when non-empty.
+func ClassifyErr(ctx context.Context, err error, stderr string) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, ErrOutputLimit) {
+		return err
+	}
+	suffix := ""
+	if s := strings.TrimSpace(stderr); s != "" {
+		suffix = "\nstderr: " + s
+	}
+	if errors.Is(err, exec.ErrWaitDelay) && ctx.Err() == nil {
+		return fmt.Errorf("%w: %w%s", ErrOutputHeldOpen, err, suffix)
+	}
+	return fmt.Errorf("%w%s", err, suffix)
 }
