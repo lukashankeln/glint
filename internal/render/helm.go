@@ -30,6 +30,7 @@ import (
 	"github.com/lukashankeln/glint/internal/discovery"
 	"github.com/lukashankeln/glint/internal/fsutil"
 	"github.com/lukashankeln/glint/internal/manifest"
+	"github.com/lukashankeln/glint/internal/memo"
 )
 
 // HelmRenderer renders Helm charts using the Helm SDK.
@@ -277,37 +278,31 @@ func fetchChartArchive(chartURL, digestString string, getters getter.Providers, 
 var repoIndexCache sync.Map // repoURL string -> *repoIndexEntry
 
 type repoIndexEntry struct {
-	once sync.Once
-	idx  *repo.IndexFile
-	err  error
+	index memo.Once[*repo.IndexFile]
 }
 
 func loadRepoIndexCached(repoURL string, getters getter.Providers) (*repo.IndexFile, error) {
 	v, _ := repoIndexCache.LoadOrStore(repoURL, &repoIndexEntry{})
 	e := v.(*repoIndexEntry)
-	e.once.Do(func() {
+	return e.index.Get(func() (*repo.IndexFile, error) {
 		dir, err := os.MkdirTemp("", "glint-helm-repo-index-")
 		if err != nil {
-			e.err = fmt.Errorf("preparing chart repo cache: %w", err)
-			return
+			return nil, fmt.Errorf("preparing chart repo cache: %w", err)
 		}
 		defer os.RemoveAll(dir)
 
 		cr, err := repo.NewChartRepository(&repo.Entry{URL: repoURL, Name: repoCacheName(repoURL)}, getters)
 		if err != nil {
-			e.err = fmt.Errorf("configuring chart repository %q: %w", repoURL, err)
-			return
+			return nil, fmt.Errorf("configuring chart repository %q: %w", repoURL, err)
 		}
 		cr.CachePath = dir
 
 		idxPath, err := cr.DownloadIndexFile()
 		if err != nil {
-			e.err = fmt.Errorf("downloading index for %q: %w", repoURL, err)
-			return
+			return nil, fmt.Errorf("downloading index for %q: %w", repoURL, err)
 		}
-		e.idx, e.err = repo.LoadIndexFile(idxPath)
+		return repo.LoadIndexFile(idxPath)
 	})
-	return e.idx, e.err
 }
 
 // repoCacheName derives a stable, glint-namespaced cache file name for a repo

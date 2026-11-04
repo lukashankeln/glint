@@ -10,7 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
+
+	"github.com/lukashankeln/glint/internal/memo"
 )
 
 // loadRepoURLs returns the normalized URLs under which the repository at
@@ -187,9 +188,7 @@ var evalSymlinksRoot = filepath.EvalSymlinks
 // most once, however many joinInRepo calls (possibly concurrent) use it.
 type repoRoot struct {
 	path     string
-	once     sync.Once
-	resolved string
-	err      error
+	resolved memo.Once[string]
 }
 
 // newRepoRoot returns a repoRoot for path. An empty path disables
@@ -200,10 +199,9 @@ func newRepoRoot(path string) *repoRoot {
 
 // resolve returns the symlink-resolved root, evaluating it on first use only.
 func (r *repoRoot) resolve() (string, error) {
-	r.once.Do(func() {
-		r.resolved, r.err = evalSymlinksRoot(r.path)
+	return r.resolved.Get(func() (string, error) {
+		return evalSymlinksRoot(r.path)
 	})
-	return r.resolved, r.err
 }
 
 // joinInRepo joins rel onto base and verifies the result stays inside
