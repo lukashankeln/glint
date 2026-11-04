@@ -9,7 +9,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    uses: kube-the-home/github-actions/.github/workflows/release-please.yaml@b99c5ab2edc078f3bead65a892452ffc18e1619f # v1.6.0
+    uses: kube-the-home/github-actions/.github/workflows/release-please.yaml@bd92cb297e0c1360a10871fb7d41adc5af496560 # v1.6.3
     with:
       config_file: release-please-config.json
       manifest_file: .release-please-manifest.json
