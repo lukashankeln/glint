@@ -9,6 +9,18 @@
         "test/testdata/**"
       ],
       "enabled": false
+    },
+    {
+      "matchManagers": [
+        "github-actions"
+      ],
+      "semanticCommitType": "build"
+    },
+    {
+      "matchFileNames": [
+        "action.yaml"
+      ],
+      "enabled": false
     }
   ]
 }
