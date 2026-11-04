@@ -129,12 +129,12 @@ func (r *Runner) Run(ctx context.Context, manifests []manifest.Manifest) ([]rule
 			return nil, fmt.Errorf("plugin %q: timed out after %s", r.cfg.Name, timeout)
 		}
 		if errors.Is(err, subproc.ErrOutputLimit) {
-			return nil, fmt.Errorf("plugin %q: output exceeded %d MB limit", r.cfg.Name, maxPluginOutputBytes/1024/1024)
+			return nil, fmt.Errorf("plugin %q: %w", r.cfg.Name, err)
 		}
-		if errors.Is(err, exec.ErrWaitDelay) && ctx.Err() == nil {
+		if errors.Is(err, subproc.ErrOutputHeldOpen) {
 			// Hard error: a plugin that leaves a child holding its output open
 			// cannot be trusted, and allow_nonzero_exit must not mask it.
-			return nil, fmt.Errorf("plugin %q: exited but a child process kept its output open: %w", r.cfg.Name, err)
+			return nil, fmt.Errorf("plugin %q: %w", r.cfg.Name, err)
 		}
 		if !r.cfg.AllowNonZeroExit {
 			v := rules.Violation{
@@ -175,7 +175,7 @@ func (r *Runner) Run(ctx context.Context, manifests []manifest.Manifest) ([]rule
 func (r *Runner) runWithStdin(ctx context.Context, input []byte) ([]byte, error) {
 	cmd := r.buildCmd(ctx, r.cfg.Args)
 	cmd.Stdin = bytes.NewReader(input)
-	return r.collectOutput(cmd)
+	return r.collectOutput(ctx, cmd)
 }
 
 func (r *Runner) runWithFile(ctx context.Context, input []byte) ([]byte, error) {
@@ -193,7 +193,7 @@ func (r *Runner) runWithFile(ctx context.Context, input []byte) ([]byte, error) 
 
 	args := append(r.cfg.Args, f.Name())
 	cmd := r.buildCmd(ctx, args)
-	return r.collectOutput(cmd)
+	return r.collectOutput(ctx, cmd)
 }
 
 func (r *Runner) buildCmd(ctx context.Context, args []string) *exec.Cmd {
@@ -205,23 +205,9 @@ func (r *Runner) buildCmd(ctx context.Context, args []string) *exec.Cmd {
 	return cmd
 }
 
-func (r *Runner) collectOutput(cmd *exec.Cmd) ([]byte, error) {
+func (r *Runner) collectOutput(ctx context.Context, cmd *exec.Cmd) ([]byte, error) {
 	stdout, stderr, err := subproc.Run(cmd, maxPluginOutputBytes, pluginWaitDelay)
-	// An ErrOutputLimit error passes through wrapRunErr unchanged.
-	return stdout, wrapRunErr(err, []byte(stderr))
-}
-
-func wrapRunErr(err error, stderr []byte) error {
-	if err == nil {
-		return nil
-	}
-	if errors.Is(err, exec.ErrWaitDelay) {
-		return fmt.Errorf("%w\nstderr: %s", err, strings.TrimSpace(string(stderr)))
-	}
-	if ee, ok := errors.AsType[*exec.ExitError](err); ok {
-		return fmt.Errorf("non-zero exit (%d): %s", ee.ExitCode(), strings.TrimSpace(string(stderr)))
-	}
-	return err
+	return stdout, subproc.ClassifyErr(ctx, err, stderr)
 }
 
 // marshalManifests joins the raw YAML bytes of each manifest with --- separators.

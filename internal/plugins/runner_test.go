@@ -319,6 +319,7 @@ func TestRunner_StdoutFlood_OutputLimit(t *testing.T) {
 	elapsed := time.Since(start)
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "output exceeded")
+	assert.ErrorIs(t, err, subproc.ErrOutputLimit)
+	assert.Contains(t, err.Error(), "output exceeds")
 	assert.Less(t, elapsed, 10*time.Second)
 }

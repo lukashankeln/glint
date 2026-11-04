@@ -21,6 +21,7 @@ import (
 	"github.com/lukashankeln/glint/internal/config"
 	"github.com/lukashankeln/glint/internal/discovery"
 	"github.com/lukashankeln/glint/internal/fsutil"
+	"github.com/lukashankeln/glint/internal/subproc"
 )
 
 // withDeadline runs fn and fails the test if it does not return in time.
@@ -277,6 +278,7 @@ func TestSubprocessRenderers_CleanExitWithOrphanedChild(t *testing.T) {
 			})
 			require.Error(t, err)
 			assert.ErrorIs(t, err, exec.ErrWaitDelay)
+			assert.ErrorIs(t, err, subproc.ErrOutputHeldOpen)
 			assert.Contains(t, err.Error(), "kept its output open")
 			assert.FileExists(t, pidfile)
 		})

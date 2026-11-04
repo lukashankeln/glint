@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/lukashankeln/glint/internal/config"
+	"github.com/lukashankeln/glint/internal/subproc"
 )
 
 // withPluginBound runs fn and fails the test if it does not return in time.
@@ -92,6 +93,7 @@ func TestRunner_CleanExitWithOrphanedChild(t *testing.T) {
 			})
 			require.Error(t, err)
 			assert.ErrorIs(t, err, exec.ErrWaitDelay)
+			assert.ErrorIs(t, err, subproc.ErrOutputHeldOpen)
 			assert.Contains(t, err.Error(), "kept its output open")
 			assert.Contains(t, err.Error(), "orphan-exit stderr marker")
 			assert.FileExists(t, pidfile)

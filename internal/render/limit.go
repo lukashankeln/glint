@@ -46,17 +46,8 @@ func checkFileCapped(path string, limit int) error {
 // "kustomize build") and appName the app, for error messages.
 func runCappedSubprocess(ctx context.Context, cmd *exec.Cmd, what, appName string) ([]byte, error) {
 	stdout, stderr, err := subproc.Run(cmd, maxStreamBytes, subprocessWaitDelay)
-	if errors.Is(err, subproc.ErrOutputLimit) {
-		return nil, fmt.Errorf("%s output for %q exceeds the %d-byte limit: %w",
-			what, appName, maxStreamBytes, subproc.ErrOutputLimit)
-	}
-	if errors.Is(err, exec.ErrWaitDelay) && ctx.Err() == nil {
-		return nil, fmt.Errorf("%s for %q exited but a child process kept its output open: %w\nstderr: %s",
-			what, appName, err, stderr)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("%s subprocess failed for %q: %w\nstderr: %s",
-			what, appName, err, stderr)
+	if err := subproc.ClassifyErr(ctx, err, stderr); err != nil {
+		return nil, fmt.Errorf("%s failed for %q: %w", what, appName, err)
 	}
 	return stdout, nil
 }
