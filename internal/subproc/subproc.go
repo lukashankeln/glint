@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -116,7 +117,9 @@ var ErrOutputHeldOpen = errors.New("exited but a child process kept its output o
 // exec.ErrWaitDelay error while ctx is still live additionally wraps
 // ErrOutputHeldOpen. Any other error (including *exec.ExitError, which stays
 // in the chain) is wrapped as is. Except for ErrOutputLimit, the trimmed
-// stderr is appended when non-empty.
+// stderr is appended when non-empty. It is child-controlled and reaches
+// terminal and report output, so it is Go-quoted: control, ANSI-escape, bidi
+// and invalid UTF-8 bytes are escaped.
 func ClassifyErr(ctx context.Context, err error, stderr string) error {
 	if err == nil {
 		return nil
@@ -126,7 +129,7 @@ func ClassifyErr(ctx context.Context, err error, stderr string) error {
 	}
 	suffix := ""
 	if s := strings.TrimSpace(stderr); s != "" {
-		suffix = "\nstderr: " + s
+		suffix = "\nstderr: " + strconv.Quote(s)
 	}
 	if errors.Is(err, exec.ErrWaitDelay) && ctx.Err() == nil {
 		return fmt.Errorf("%w: %w%s", ErrOutputHeldOpen, err, suffix)

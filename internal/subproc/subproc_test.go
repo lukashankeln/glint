@@ -168,7 +168,7 @@ func TestClassifyErr(t *testing.T) {
 		got := ClassifyErr(context.Background(), waitErr, "x")
 		assert.ErrorIs(t, got, ErrOutputHeldOpen)
 		assert.ErrorIs(t, got, exec.ErrWaitDelay)
-		assert.Contains(t, got.Error(), "stderr: x")
+		assert.Contains(t, got.Error(), `stderr: "x"`)
 	})
 	t.Run("wait delay with cancelled context", func(t *testing.T) {
 		got := ClassifyErr(cancelled, waitErr, "x")
@@ -183,7 +183,18 @@ func TestClassifyErr(t *testing.T) {
 	})
 	t.Run("stderr trimmed", func(t *testing.T) {
 		got := ClassifyErr(context.Background(), errors.New("boom"), "\n msg \n")
-		assert.Equal(t, "boom\nstderr: msg", got.Error())
+		assert.Equal(t, "boom\nstderr: \"msg\"", got.Error())
+	})
+	t.Run("hostile stderr escaped", func(t *testing.T) {
+		stderr := "\n \x1b[2J a\rb\nc \u202e \u2066 \u0085 \x00 \xff \n"
+		msg := ClassifyErr(context.Background(), errors.New("boom"), stderr).Error()
+		for _, raw := range []string{"\x1b", "\r", "\u202e", "\u2066", "\u0085", "\x00", "\xff"} {
+			assert.NotContains(t, msg, raw)
+		}
+		for _, esc := range []string{`\x1b`, `\r`, `\n`, `\u202e`, `\u2066`, `\u0085`, `\x00`, `\xff`} {
+			assert.Contains(t, msg, esc)
+		}
+		assert.Equal(t, 1, strings.Count(msg, "\n"), "only glint's own separator")
 	})
 }
 
@@ -193,5 +204,5 @@ func TestClassifyErr_ExitError(t *testing.T) {
 	var ee *exec.ExitError
 	require.True(t, errors.As(got, &ee), "got %v", got)
 	assert.Equal(t, 3, ee.ExitCode())
-	assert.Contains(t, got.Error(), "stderr: boom")
+	assert.Contains(t, got.Error(), `stderr: "boom"`)
 }
