@@ -109,6 +109,9 @@ func TestHelperProcess(t *testing.T) {
 		waitHelperPidfile()
 		_, _ = os.Stdout.WriteString("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: a\n")
 		os.Exit(0)
+	case "stderr-ansi":
+		_, _ = os.Stderr.WriteString("\x1b[2J bad\rline\nnext \u202e end\n")
+		os.Exit(1)
 	case "manifest":
 		_, _ = os.Stdout.WriteString("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: a\n")
 		os.Exit(0)
@@ -179,6 +182,35 @@ func TestSubprocessRenderers_OutputCap(t *testing.T) {
 			n, err := run(ctx)
 			require.NoError(t, err)
 			assert.Equal(t, 1, n)
+		})
+	}
+}
+
+func TestSubprocessRenderers_StderrEscaped(t *testing.T) {
+	app := discovery.DiscoveredApp{Name: "x", RootPath: t.TempDir()}
+	renderers := map[string]func(context.Context) error{
+		"helm": func(ctx context.Context) error {
+			_, err := renderHelmSubprocess(ctx, app, nil)
+			return err
+		},
+		"kustomize": func(ctx context.Context) error {
+			_, err := renderKustomizeSubprocess(ctx, defaultCfg(), app)
+			return err
+		},
+	}
+	for name, run := range renderers {
+		t.Run(name, func(t *testing.T) {
+			fakeExec(t, "stderr-ansi")
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			err := run(ctx)
+			require.Error(t, err)
+			msg := err.Error()
+			assert.NotContains(t, msg, "\x1b")
+			assert.NotContains(t, msg, "\r")
+			assert.NotContains(t, msg, "\u202e")
+			assert.Equal(t, 1, strings.Count(msg, "\n"), "only glint's own separator: %q", msg)
+			assert.Contains(t, msg, `\x1b`)
 		})
 	}
 }

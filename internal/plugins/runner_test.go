@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -36,6 +37,9 @@ func TestMain(m *testing.M) {
 		for range 128 { // 4 MiB
 			_, _ = os.Stderr.Write(chunk)
 		}
+		os.Exit(1)
+	case "stderr_ansi":
+		_, _ = os.Stderr.WriteString("\x1b[2J bad\rline\nnext \u202e end\n")
 		os.Exit(1)
 	case "stdout_flood":
 		chunk := bytes.Repeat([]byte("x"), 32<<10)
@@ -180,6 +184,25 @@ func TestRunner_StderrFlood_Truncated(t *testing.T) {
 	require.Len(t, vs, 1)
 	assert.Contains(t, vs[0].Message, "[stderr truncated]")
 	assert.LessOrEqual(t, len(vs[0].Message), subproc.StderrKeep+256)
+}
+
+func TestRunner_StderrEscaped(t *testing.T) {
+	r, err := New(config.PluginConfig{
+		Name:    "test",
+		Command: selfExe(t),
+		Env:     map[string]string{"GLINT_PLUGIN_TEST_MODE": "stderr_ansi"},
+	})
+	require.NoError(t, err)
+
+	vs, err := r.Run(context.Background(), testManifests)
+	require.NoError(t, err)
+	require.Len(t, vs, 1)
+	msg := vs[0].Message
+	assert.NotContains(t, msg, "\x1b")
+	assert.NotContains(t, msg, "\r")
+	assert.NotContains(t, msg, "\u202e")
+	assert.Equal(t, 1, strings.Count(msg, "\n"), "only glint's own separator")
+	assert.Contains(t, msg, `\x1b`)
 }
 
 func TestRunner_NonZeroExit_Allowed(t *testing.T) {
