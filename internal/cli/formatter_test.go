@@ -68,7 +68,7 @@ func TestWriteSARIF_WithViolation(t *testing.T) {
 
 func hostileViolations(t *testing.T) []rules.Violation {
 	t.Helper()
-	raw := `[{"rule_id":"r\u001b[31m1","message":"line1\nline2 \u202eevil \u009b","file":"dir/\u001b]0;x\u0007.yaml","kind":"Pod\u202e","name":"n\r\nx","namespace":"ns\u001b","api_version":"v1\u009b","source":"cel\u001b"},
+	raw := `[{"rule_id":"r\u001b[31m1","message":"line1\nline2 \u202eevil \u009b","file":"dir/\u001b]0;x\u0007.yaml","kind":"Pod\u202e","name":"n\r\nx","namespace":"ns\u001b","api_version":"v1\u009b","source":"cel\u001b","severity":"x\u001b[2J\n[ERROR] forged"},
 {"rule_id":"x::y","message":"m","file":"a%0Ab:c,d"}]`
 	var in []struct {
 		RuleID     string `json:"rule_id"`
@@ -79,12 +79,17 @@ func hostileViolations(t *testing.T) []rules.Violation {
 		Namespace  string `json:"namespace"`
 		APIVersion string `json:"api_version"`
 		Source     string `json:"source"`
+		Severity   string `json:"severity"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(raw), &in))
 	var out []rules.Violation
 	for _, p := range in {
+		sev := rules.SeverityError
+		if p.Severity != "" {
+			sev = rules.Severity(p.Severity)
+		}
 		out = append(out, rules.Violation{
-			RuleID: p.RuleID, Severity: rules.SeverityError, Message: p.Message,
+			RuleID: p.RuleID, Severity: sev, Message: p.Message,
 			Source: p.Source, APIVersion: p.APIVersion, ResourceKind: p.Kind,
 			ResourceName: p.Name, ResourceNS: p.Namespace, FilePath: p.File,
 		})
@@ -110,6 +115,12 @@ func TestWriteTextEscapesHostileFields(t *testing.T) {
 	assert.Equal(t, len(vs), strings.Count(out, "\n"))
 	assertNoRawControl(t, out)
 	assert.Contains(t, out, `line1\nline2`)
+	assert.Contains(t, out, `[X\x1b[2J\n[ERROR] FORGED]`)
+}
+
+func TestEscapeDataAndProperty(t *testing.T) {
+	assert.Equal(t, "a%25b%0D%0Ac:d,e", escapeData("a%b\r\nc:d,e"))
+	assert.Equal(t, "a%25b%0D%0Ac%3Ad%2Ce", escapeProperty("a%b\r\nc:d,e"))
 }
 
 func TestWriteGitHubActionsEscapesHostileFields(t *testing.T) {
