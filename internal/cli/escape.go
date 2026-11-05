@@ -22,8 +22,10 @@ func needsEscape(s string) bool {
 
 // escapeNonPrintable makes s safe for terminals and log consumers by
 // rewriting invalid bytes and non-printable runes as escape sequences.
-// Backslashes are doubled only when escaping is needed, so the result is
-// unambiguous. Strings that need no escaping are returned unchanged.
+// Strings that need no escaping are returned unchanged. Otherwise
+// backslashes are doubled as well, so an escaped string can be told apart
+// from its source; a string that needed no escaping may still contain a
+// literal backslash sequence such as `\x1b`.
 func escapeNonPrintable(s string) string {
 	if !needsEscape(s) {
 		return s

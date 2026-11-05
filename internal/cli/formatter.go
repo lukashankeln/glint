@@ -100,7 +100,7 @@ func writeText(w io.Writer, violations []rules.Violation) error {
 		}
 
 		_, err := fmt.Fprintf(w, "[%s] %s  %s: %s  [%s]\n",
-			strings.ToUpper(string(v.Severity)),
+			escapeNonPrintable(strings.ToUpper(string(v.Severity))),
 			source,
 			location,
 			v.Message,
@@ -155,8 +155,9 @@ func writeGitHubActions(w io.Writer, violations []rules.Violation) error {
 	return nil
 }
 
-// escapeViolation returns v with every field rendered by the text and
-// GitHub Actions writers stripped of control and bidi characters.
+// escapeViolation returns v with every string field rendered by the text and
+// GitHub Actions writers passed through escapeNonPrintable. Severity is
+// escaped by writeText after upper-casing so the escapes stay readable.
 func escapeViolation(v rules.Violation) rules.Violation {
 	v.Source = escapeNonPrintable(v.Source)
 	v.ResourceKind = escapeNonPrintable(v.ResourceKind)
@@ -170,6 +171,8 @@ func escapeViolation(v rules.Violation) rules.Violation {
 }
 
 // escapeData mirrors escapeData in the GitHub actions toolkit command module.
+// writeGitHubActions already escapes CR and LF via escapeViolation; the
+// replacements are kept so the helpers match the toolkit on their own.
 func escapeData(s string) string {
 	s = strings.ReplaceAll(s, "%", "%25")
 	s = strings.ReplaceAll(s, "\r", "%0D")
