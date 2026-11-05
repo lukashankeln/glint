@@ -323,6 +323,8 @@ In `glint lint`, a report file (`--output`, `--output-sarif`, `--output-junit`, 
 | `github-actions` | GitHub workflow annotations on PRs (auto-selected when `GITHUB_ACTIONS=true`) |
 | `sarif` | GitHub Security tab / Code Scanning |
 
+The `text` and `github-actions` formats escape non-printable and bidi characters in rule IDs, messages, file paths and resource names; `json`, `sarif` and `junit` carry the raw values (JSON-/XML-encoded).
+
 ---
 
 ## License

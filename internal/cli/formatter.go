@@ -80,6 +80,7 @@ func writeOutput(w io.Writer, violations []rules.Violation, format string) error
 
 func writeText(w io.Writer, violations []rules.Violation) error {
 	for _, v := range violations {
+		v = escapeViolation(v)
 		source := v.Source
 		if source == "" {
 			source = "cel"
@@ -114,6 +115,7 @@ func writeText(w io.Writer, violations []rules.Violation) error {
 
 func writeGitHubActions(w io.Writer, violations []rules.Violation) error {
 	for _, v := range violations {
+		v = escapeViolation(v)
 		level := "notice"
 		switch v.Severity {
 		case rules.SeverityError:
@@ -137,16 +139,12 @@ func writeGitHubActions(w io.Writer, violations []rules.Violation) error {
 
 		// Escape GitHub annotation message characters.
 		raw := fmt.Sprintf("%s: %s  [%s]", location, v.Message, v.RuleID)
-		msg := strings.ReplaceAll(raw, "%", "%25")
-		msg = strings.ReplaceAll(msg, "\r", "%0D")
-		msg = strings.ReplaceAll(msg, "\n", "%0A")
-		title := fmt.Sprintf("%s [%s]", location, v.RuleID)
-		title = strings.ReplaceAll(title, ",", "%2C")
-		title = strings.ReplaceAll(title, ":", "%3A")
+		msg := escapeData(raw)
+		title := escapeProperty(fmt.Sprintf("%s [%s]", location, v.RuleID))
 
 		var line string
 		if file != "" {
-			line = fmt.Sprintf("::%s file=%s,title=%s::%s", level, file, title, msg)
+			line = fmt.Sprintf("::%s file=%s,title=%s::%s", level, escapeProperty(file), title, msg)
 		} else {
 			line = fmt.Sprintf("::%s title=%s::%s", level, title, msg)
 		}
@@ -155,6 +153,34 @@ func writeGitHubActions(w io.Writer, violations []rules.Violation) error {
 		}
 	}
 	return nil
+}
+
+// escapeViolation returns v with every field rendered by the text and
+// GitHub Actions writers stripped of control and bidi characters.
+func escapeViolation(v rules.Violation) rules.Violation {
+	v.Source = escapeNonPrintable(v.Source)
+	v.ResourceKind = escapeNonPrintable(v.ResourceKind)
+	v.ResourceNS = escapeNonPrintable(v.ResourceNS)
+	v.ResourceName = escapeNonPrintable(v.ResourceName)
+	v.APIVersion = escapeNonPrintable(v.APIVersion)
+	v.FilePath = escapeNonPrintable(v.FilePath)
+	v.Message = escapeNonPrintable(v.Message)
+	v.RuleID = escapeNonPrintable(v.RuleID)
+	return v
+}
+
+// escapeData mirrors escapeData in the GitHub actions toolkit command module.
+func escapeData(s string) string {
+	s = strings.ReplaceAll(s, "%", "%25")
+	s = strings.ReplaceAll(s, "\r", "%0D")
+	return strings.ReplaceAll(s, "\n", "%0A")
+}
+
+// escapeProperty mirrors escapeProperty in the GitHub actions toolkit.
+func escapeProperty(s string) string {
+	s = escapeData(s)
+	s = strings.ReplaceAll(s, ":", "%3A")
+	return strings.ReplaceAll(s, ",", "%2C")
 }
 
 // sarifLevel maps glint severity to SARIF notification level.

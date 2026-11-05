@@ -157,14 +157,18 @@ func (h *consoleHandler) Handle(_ context.Context, r slog.Record) error {
 	}
 
 	b.WriteByte(' ')
-	b.WriteString(r.Message)
+	if needsEscape(r.Message) {
+		b.WriteString(strconv.Quote(r.Message))
+	} else {
+		b.WriteString(r.Message)
+	}
 
 	r.Attrs(func(a slog.Attr) bool {
 		b.WriteByte(' ')
 		b.WriteString(a.Key)
 		b.WriteByte('=')
 		val := fmt.Sprintf("%v", a.Value.Any())
-		if strings.ContainsAny(val, " \t\n\"") {
+		if needsEscape(val) || strings.ContainsAny(val, " \"") {
 			b.WriteString(strconv.Quote(val))
 		} else {
 			b.WriteString(val)
