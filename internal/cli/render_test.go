@@ -245,3 +245,79 @@ func TestRender_StdoutWriteFailureFailsRun(t *testing.T) {
 	assert.EqualError(t, cmd.Execute(), "writing output for app "+firstName+": disk on fire")
 	assert.Equal(t, 1, calls, "render must stop at the first failed stdout write")
 }
+
+func TestWriteManifests_HeaderEscapesAppName(t *testing.T) {
+	var buf bytes.Buffer
+	app := discovery.DiscoveredApp{Name: "a\x1b]0;x\x07\nkind: Secret"}
+
+	require.NoError(t, writeManifests(&buf, app, nil, "yaml", true))
+
+	assert.Equal(t, "# --- app: a\\x1b]0;x\\a\\nkind: Secret ---\n", buf.String())
+}
+
+// TestRender_ErrorsEscapeAppNames checks that app names in the returned
+// errors never carry raw control characters.
+func TestRender_ErrorsEscapeAppNames(t *testing.T) {
+	const hostile = "evil\x1b[2J"
+	const escaped = `evil\x1b[2J`
+
+	t.Run("render and write failed lists", func(t *testing.T) {
+		dir := writeRenderTestApps(t, "a", "b")
+		outDir := filepath.Join(t.TempDir(), "out")
+
+		oldCfg, oldRender := cfgFile, renderApps
+		t.Cleanup(func() { cfgFile, renderApps = oldCfg, oldRender })
+		cfgFile = filepath.Join(dir, "glint.yaml")
+
+		renderApps = func(_ context.Context, apps []discovery.DiscoveredApp, _ *config.Config) []renderResult {
+			require.GreaterOrEqual(t, len(apps), 2)
+			bad, writeBad := apps[0], apps[1]
+			bad.Name = hostile + "1"
+			// A directory at the output file path makes the write fail.
+			// File names keep the raw name by design.
+			writeBad.Name = hostile + "2"
+			require.NoError(t, os.MkdirAll(filepath.Join(outDir, writeBad.Name+".yaml"), 0o755))
+			return []renderResult{
+				{app: bad, err: errors.New("helm template failed")},
+				{app: writeBad, manifests: []manifest.Manifest{testConfigMapManifest("x")}},
+			}
+		}
+
+		cmd := newRenderCmd()
+		cmd.SetOut(&bytes.Buffer{})
+		cmd.SetErr(&bytes.Buffer{})
+		cmd.SetArgs([]string{dir, "--output", outDir})
+		err := cmd.Execute()
+
+		require.Error(t, err)
+		assert.NotContains(t, err.Error(), "\x1b")
+		assert.EqualError(t, err,
+			"rendering failed for 1 app(s): "+escaped+"1\nwriting output failed for 1 app(s): "+escaped+"2")
+	})
+
+	t.Run("stdout write failure", func(t *testing.T) {
+		dir := writeRenderTestApps(t, "a")
+
+		oldCfg, oldRender := cfgFile, renderApps
+		t.Cleanup(func() { cfgFile, renderApps = oldCfg, oldRender })
+		cfgFile = filepath.Join(dir, "glint.yaml")
+		renderApps = func(_ context.Context, apps []discovery.DiscoveredApp, _ *config.Config) []renderResult {
+			require.GreaterOrEqual(t, len(apps), 1)
+			a := apps[0]
+			a.Name = hostile
+			return []renderResult{{app: a, manifests: []manifest.Manifest{testConfigMapManifest("x")}}}
+		}
+
+		calls := 0
+		cmd := newRenderCmd()
+		cmd.SetOut(failingWriter{calls: &calls})
+		cmd.SilenceUsage, cmd.SilenceErrors = true, true
+		cmd.SetErr(&bytes.Buffer{})
+		cmd.SetArgs([]string{dir})
+		err := cmd.Execute()
+
+		require.Error(t, err)
+		assert.NotContains(t, err.Error(), "\x1b")
+		assert.EqualError(t, err, "writing output for app "+escaped+": disk on fire")
+	})
+}
