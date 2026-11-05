@@ -70,7 +70,7 @@ Use --output <dir> to write each app to <dir>/<appname>.yaml.`,
 
 				if r.err != nil {
 					slog.Warn("render failed", "app", r.app.Name, "err", r.err)
-					failed = append(failed, r.app.Name)
+					failed = append(failed, escapeNonPrintable(r.app.Name))
 					continue
 				}
 
@@ -82,13 +82,13 @@ Use --output <dir> to write each app to <dir>/<appname>.yaml.`,
 				if output != "" && output != "-" {
 					if err := writeManifestsToFile(output, r.app, r.manifests, format); err != nil {
 						slog.Warn("failed to write output file", "app", r.app.Name, "err", err)
-						writeFailed = append(writeFailed, r.app.Name)
+						writeFailed = append(writeFailed, escapeNonPrintable(r.app.Name))
 						continue
 					}
 				} else if err := writeManifestsToWriter(cmd, r.app, r.manifests, format); err != nil {
 					// Stdout output cannot be cleaned up, so stop instead of
 					// appending further apps after a truncated document.
-					return fmt.Errorf("writing output for app %s: %w", r.app.Name, err)
+					return fmt.Errorf("writing output for app %s: %w", escapeNonPrintable(r.app.Name), err)
 				}
 				rendered++
 				totalManifests += len(r.manifests)
@@ -119,7 +119,7 @@ func writeManifestsToWriter(cmd *cobra.Command, app discovery.DiscoveredApp, man
 // header comment is only emitted for stdout output.
 func writeManifests(w io.Writer, app discovery.DiscoveredApp, manifests []manifest.Manifest, format string, header bool) error {
 	if header {
-		if _, err := fmt.Fprintf(w, "# --- app: %s ---\n", app.Name); err != nil {
+		if _, err := fmt.Fprintf(w, "# --- app: %s ---\n", escapeNonPrintable(app.Name)); err != nil {
 			return err
 		}
 	}

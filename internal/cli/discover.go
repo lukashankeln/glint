@@ -56,12 +56,17 @@ Useful for debugging discovery configuration before running a full lint.`,
 func printDiscoverText(cmd *cobra.Command, paths []string, apps []discovery.DiscoveredApp) error {
 	w := cmd.OutOrStdout()
 
+	shownPaths := make([]string, len(paths))
+	for i, p := range paths {
+		shownPaths[i] = escapeNonPrintable(p)
+	}
+
 	if len(apps) == 0 {
-		fmt.Fprintf(w, "No apps discovered in %s\n", strings.Join(paths, ", "))
+		fmt.Fprintf(w, "No apps discovered in %s\n", strings.Join(shownPaths, ", "))
 		return nil
 	}
 
-	fmt.Fprintf(w, "Discovered %d app(s) in %s\n\n", len(apps), strings.Join(paths, ", "))
+	fmt.Fprintf(w, "Discovered %d app(s) in %s\n\n", len(apps), strings.Join(shownPaths, ", "))
 
 	cwd, _ := os.Getwd()
 
@@ -75,11 +80,11 @@ func printDiscoverText(cmd *cobra.Command, paths []string, apps []discovery.Disc
 			source = displayPath(cwd, app.Source.Path)
 		}
 		fmt.Fprintf(tw, "  %s\t%s\t(%s)\t%s\t%s\n",
-			app.Name,
-			string(app.Renderer),
-			string(app.Framework),
-			renderTarget(cwd, app),
-			source,
+			escapeNonPrintable(app.Name),
+			escapeNonPrintable(string(app.Renderer)),
+			escapeNonPrintable(string(app.Framework)),
+			escapeNonPrintable(renderTarget(cwd, app)),
+			escapeNonPrintable(source),
 		)
 	}
 	return tw.Flush()

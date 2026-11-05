@@ -325,6 +325,8 @@ In `glint lint`, a report file (`--output`, `--output-sarif`, `--output-junit`, 
 
 The `text` and `github-actions` formats escape non-printable and bidi characters in severities, rule IDs, messages, file paths and resource names; `json`, `sarif` and `junit` carry the raw values (JSON-/XML-encoded).
 
+`glint discover` (text output) and `glint render` (the stdout `# --- app:` header and error messages) escape the same characters in app names, render targets and sources; `discover --format json`, the rendered manifests and the `--output` file names keep the raw values.
+
 ---
 
 ## License
