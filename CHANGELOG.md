@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.3.1](https://github.com/lukashankeln/glint/compare/v0.3.0...v0.3.1) (2026-11-06)
+
+
+### Features
+
+* **deps:** update kube-the-home/github-actions action to v1.6.0 ([e7d6d03](https://github.com/lukashankeln/glint/commit/e7d6d033a2ceb370e7c87180648a20bb43094237))
+
+
+### Bug Fixes
+
+* **cli:** drop duplicate warning log for render failures ([1c88e7e](https://github.com/lukashankeln/glint/commit/1c88e7ebec9ec5e653f6527fdf138d3c1c5d54d2))
+* **cli:** escape app names in discover and render terminal output ([91ec3f1](https://github.com/lukashankeln/glint/commit/91ec3f1d3b91abed958db49618bbe663ee6520e3))
+* **cli:** escape control and bidi characters in logs and text reports ([1c083f2](https://github.com/lukashankeln/glint/commit/1c083f2d6f4b7c87ea756f6513229f701f2a88de))
+* **cli:** escape severity in text report output ([a2bb279](https://github.com/lukashankeln/glint/commit/a2bb279b2b1689825b3b580e2da7651b3babbd33))
+* **deps:** update alpine docker tag to v3.24.4 ([b7915b3](https://github.com/lukashankeln/glint/commit/b7915b3ae9eb8fe637a6f6cdacddb2dbcabaa55d))
+* **deps:** update kube-the-home/github-actions action to v1.6.3 ([ffaf7d5](https://github.com/lukashankeln/glint/commit/ffaf7d5b0f8951434a857e986ed08295ea345294))
+* **release:** emit postflight_steps in homebrew cask ([eaac1a0](https://github.com/lukashankeln/glint/commit/eaac1a0c9b96018b76dd9a9219dfa55b1e51457a))
+* **subproc:** quote child stderr shown in errors ([a858f97](https://github.com/lukashankeln/glint/commit/a858f979f6a3fb166446129e1fc9ec9d89cc14bc))
+
 ## [0.3.0](https://github.com/lukashankeln/glint/compare/v0.2.9...v0.3.0) (2026-10-31)
 
 This release is mostly a hardening pass: glint can now be pointed at untrusted or adversarial manifests, Helm charts, Kustomize overlays, and lint plugins without risking unbounded memory growth, hung subprocesses, or silently incomplete output. It also fixes a number of YAML parsing edge cases to match `sigs.k8s.io/yaml` output more closely, and resolves Helm chart repositories once per URL instead of once per app, cutting both memory use and redundant network calls on repos with many apps sharing a chart repo.
