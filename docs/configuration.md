@@ -252,7 +252,7 @@ rules:
 
 ```yaml
 output:
-  format: text           # text | json | sarif | github-actions
+  format: text           # text | json | sarif | junit | github-actions
   color: auto            # auto | always | never
   output_file: ""        # Write output here instead of stdout
   summary: true          # Print summary line at end of text output
