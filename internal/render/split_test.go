@@ -155,6 +155,138 @@ metadata:
 	assert.NotEmpty(t, manifests[0].Raw)
 }
 
+func TestSplitYAML_RawIsSourceSlice(t *testing.T) {
+	// Non-canonical formatting (a quoted value yaml.v3's encoder would
+	// otherwise emit bare, a trailing inline comment) that only survives if
+	// Raw is a slice of the original text rather than a round trip through
+	// the encoder, which reformats.
+	doc := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: \"my-cm\"\ndata:\n  foo: bar # keep me\n"
+	manifests, err := SplitYAML([]byte(doc), "app", "file.yaml", false)
+	require.NoError(t, err)
+	require.Len(t, manifests, 1)
+	assert.Equal(t, doc, string(manifests[0].Raw))
+}
+
+func TestSplitYAML_RawTrimsTrailingBlankLines(t *testing.T) {
+	data := []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\n\n\n   \n")
+	manifests, err := SplitYAML(data, "app", "file.yaml", false)
+	require.NoError(t, err)
+	require.Len(t, manifests, 1)
+	assert.Equal(t, "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\n", string(manifests[0].Raw))
+}
+
+func TestSplitYAML_RawCommentAttachesToOwnDocument(t *testing.T) {
+	// Helm writes a "# Source: ..." comment immediately before each
+	// rendered document; yaml.v3 attaches it to the document that follows,
+	// not the one before, and Raw must follow that attachment rather than
+	// the stream position of the "---" that precedes it.
+	stream := "---\n# Source: chart/templates/cm.yaml\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm1\n" +
+		"---\n# Source: chart/templates/svc.yaml\napiVersion: v1\nkind: Service\nmetadata:\n  name: svc1\n"
+
+	manifests, err := SplitYAML([]byte(stream), "app", "<rendered>", true)
+	require.NoError(t, err)
+	require.Len(t, manifests, 2)
+
+	assert.Contains(t, string(manifests[0].Raw), "# Source: chart/templates/cm.yaml")
+	assert.NotContains(t, string(manifests[0].Raw), "svc.yaml")
+
+	assert.Contains(t, string(manifests[1].Raw), "# Source: chart/templates/svc.yaml")
+	assert.NotContains(t, string(manifests[1].Raw), "cm.yaml")
+}
+
+func TestSplitYAML_RawCRLF(t *testing.T) {
+	stream := strings.ReplaceAll(
+		"---\n# Source: a.yaml\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: a\n"+
+			"---\n# Source: b.yaml\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: b\n",
+		"\n", "\r\n")
+
+	manifests, err := SplitYAML([]byte(stream), "app", "<rendered>", true)
+	require.NoError(t, err)
+	require.Len(t, manifests, 2)
+
+	assert.Contains(t, string(manifests[0].Raw), "# Source: a.yaml")
+	assert.NotContains(t, string(manifests[0].Raw), "b.yaml")
+	assert.Contains(t, string(manifests[1].Raw), "# Source: b.yaml")
+	assert.NotContains(t, string(manifests[1].Raw), "a.yaml")
+
+	var rt map[string]any
+	require.NoError(t, sigsyaml.Unmarshal(manifests[0].Raw, &rt))
+	assert.Equal(t, "a", rt["metadata"].(map[string]any)["name"])
+}
+
+func TestSplitYAML_RawBoundariesAcrossSkippedDocument(t *testing.T) {
+	// A document that gets skipped (missing kind) still occupies space in
+	// the stream; its neighbors' Raw must not bleed into or out of it.
+	stream := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: first\ndata:\n  marker: FIRST_UNIQUE_MARKER\n" +
+		"---\napiVersion: v1\nmetadata:\n  name: no-kind-here\ndata:\n  marker: SKIPPED_UNIQUE_MARKER\n" +
+		"---\napiVersion: v1\nkind: Secret\nmetadata:\n  name: last\ndata:\n  marker: LAST_UNIQUE_MARKER\n"
+
+	manifests, err := SplitYAML([]byte(stream), "app", "file.yaml", false)
+	require.NoError(t, err)
+	require.Len(t, manifests, 2)
+
+	assert.Equal(t, "ConfigMap", manifests[0].Kind)
+	assert.Contains(t, string(manifests[0].Raw), "FIRST_UNIQUE_MARKER")
+	assert.NotContains(t, string(manifests[0].Raw), "SKIPPED_UNIQUE_MARKER")
+	assert.NotContains(t, string(manifests[0].Raw), "LAST_UNIQUE_MARKER")
+
+	assert.Equal(t, "Secret", manifests[1].Kind)
+	assert.Contains(t, string(manifests[1].Raw), "LAST_UNIQUE_MARKER")
+	assert.NotContains(t, string(manifests[1].Raw), "SKIPPED_UNIQUE_MARKER")
+	assert.NotContains(t, string(manifests[1].Raw), "FIRST_UNIQUE_MARKER")
+}
+
+func TestSplitYAML_RawExcludesLeadingEmptyDocMarkers(t *testing.T) {
+	// Two empty documents (nothing between consecutive "---") precede the
+	// real one; its Raw must not pick up their separator lines, or a
+	// single-document YAML parser handed just this Raw would decode the
+	// leading empty document instead of the real content.
+	data := []byte(`
+---
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-ns
+---
+`)
+	manifests, err := SplitYAML(data, "app", "file.yaml", false)
+	require.NoError(t, err)
+	require.Len(t, manifests, 1)
+
+	var rt map[string]any
+	require.NoError(t, sigsyaml.Unmarshal(manifests[0].Raw, &rt))
+	assert.Equal(t, "Namespace", rt["kind"])
+}
+
+func TestSplitYAML_RawExcludesOrphanedCommentOnlyDocument(t *testing.T) {
+	// Helm writes a "# Source: ..." header even for a template that renders
+	// to nothing, producing a comment-only document sandwiched between two
+	// real ones. That header, and the "---" markers around it, must not
+	// leak into the following manifest's Raw.
+	stream := "---\n# Source: a.yaml\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: a\n" +
+		"---\n# Source: b-empty.yaml\n" +
+		"---\n# Source: c.yaml\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: c\n"
+
+	manifests, err := SplitYAML([]byte(stream), "app", "<rendered>", true)
+	require.NoError(t, err)
+	require.Len(t, manifests, 2)
+
+	assert.Equal(t, "a", manifests[0].Name)
+	assert.Contains(t, string(manifests[0].Raw), "# Source: a.yaml")
+	assert.NotContains(t, string(manifests[0].Raw), "b-empty.yaml")
+
+	assert.Equal(t, "c", manifests[1].Name)
+	assert.Contains(t, string(manifests[1].Raw), "# Source: c.yaml")
+	assert.NotContains(t, string(manifests[1].Raw), "b-empty.yaml")
+
+	// Raw must parse as a single document, not a stream carrying a phantom
+	// extra document from a leaked "---".
+	var rt map[string]any
+	require.NoError(t, sigsyaml.Unmarshal(manifests[1].Raw, &rt))
+	assert.Equal(t, "c", rt["metadata"].(map[string]any)["name"])
+}
+
 func TestMergeValues(t *testing.T) {
 	dst := map[string]any{
 		"a": "orig",

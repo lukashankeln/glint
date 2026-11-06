@@ -55,11 +55,36 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	cursor := newSourceCursor(data)
+	cursor.prepare()
+	lineOffsets := buildLineOffsets(cursor.src)
+
+	// pendingRaw is the most recently accepted document whose Raw isn't
+	// filled in yet: a document's extent isn't known from its own Node, only
+	// from where the next one starts (or the stream ends), so Raw is always
+	// finalized one document behind.
+	type pendingDoc struct {
+		start int
+		idx   int // index into manifests
+	}
+	var pendingRaw *pendingDoc
+	finalizeRaw := func(end int) {
+		if pendingRaw == nil {
+			return
+		}
+		raw := bytes.TrimRight(cursor.src[pendingRaw.start:end], " \t\r\n")
+		docBytes := make([]byte, len(raw)+1)
+		copy(docBytes, raw)
+		docBytes[len(raw)] = '\n'
+		manifests[pendingRaw.idx].Raw = docBytes
+		pendingRaw = nil
+	}
+
 	docCount := 0
 	for {
 		var node yaml.Node
 		if err := dec.Decode(&node); err != nil {
 			if errors.Is(err, io.EOF) {
+				finalizeRaw(len(cursor.src))
 				break
 			}
 			return nil, fmt.Errorf("decoding YAML document: %w", err)
@@ -69,21 +94,24 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 			return nil, fmt.Errorf("YAML stream has more than %d documents: %w",
 				maxStreamDocuments, errTooManyDocuments)
 		}
-		if node.Kind == 0 {
+		if node.Kind == 0 || len(node.Content) == 0 {
 			continue // empty doc
 		}
 
-		// yaml.v3 drops a bare "!" tag; recover it from the source so that
-		// the re-encoded Raw and the conversion see the merge key.
+		// yaml.v3 drops a bare "!" tag; recover it from the source so the
+		// conversion below sees the merge key (Raw is sliced from source
+		// text, below, and already shows it).
 		if err := mergeTagResolver(cursor, &node); err != nil {
 			return nil, fmt.Errorf("resolving merge keys: %w", err)
 		}
 
-		// Re-encode the single document (needed for Manifest.Raw).
-		docBytes, err := yaml.Marshal(&node)
-		if err != nil {
-			continue
-		}
+		// This document's Raw starts at its first content line, extended
+		// backward over any immediately preceding comment lines (e.g. Helm's
+		// "# Source: ..." marker) so they land in this document rather than
+		// the previous one. That also fixes the previous document's end,
+		// which was unknown until now.
+		start := lineOffsets[backfillLeadingComments(cursor.src, lineOffsets, node.Content[0].Line)]
+		finalizeRaw(start)
 
 		// Build the JSON-compatible object straight from the already-parsed
 		// Node tree instead of re-parsing docBytes through a second YAML/JSON
@@ -123,15 +151,80 @@ func SplitYAML(data []byte, appName string, sourcePath string, rendered bool) ([
 			Kind:       kind,
 			Name:       name,
 			Namespace:  namespace,
-			Raw:        docBytes,
 			SourceApp:  appName,
 			SourcePath: sourcePath,
 			Rendered:   rendered,
 			Object:     obj,
 		})
+		pendingRaw = &pendingDoc{start: start, idx: len(manifests) - 1}
 	}
 
 	return manifests, nil
+}
+
+// buildLineOffsets returns, for each 1-based line number found in src, the
+// byte offset where that line begins (index 0 is unused). It walks src with
+// the same line-break rule as sourceCursor.next (see isBreakRune), so the
+// line numbers line up exactly with yaml.Node.Line.
+func buildLineOffsets(src []byte) []int {
+	offsets := make([]int, 2, 64)
+	for i := 0; i < len(src); {
+		r, n := utf8.DecodeRune(src[i:])
+		i += n
+		if r == '\r' && i < len(src) && src[i] == '\n' {
+			i++
+		}
+		if isBreakRune(r) {
+			offsets = append(offsets, i)
+		}
+	}
+	return offsets
+}
+
+// backfillLeadingComments walks backward from a document's content line over
+// its own prelude: optional comment/blank lines, the single "---"/"..."
+// marker that opens it, and any "%" directive (%YAML, %TAG) lines (with more
+// comment/blank lines interleaved) above that marker. It stops as soon as a
+// second marker is reached — that one opens a different, likely empty,
+// document — or at any other line, or the start of the stream.
+//
+// This matters for a "# Source: path/to/template.yaml" comment, which Helm
+// writes right before each rendered document and which yaml.v3 attaches to
+// the document that follows rather than the stream position suggesting
+// otherwise, and for a "%TAG" directive, whose scope is the single document
+// that follows it: a document using the shorthand tag it defines fails to
+// parse on its own without it.
+func backfillLeadingComments(src []byte, lineOffsets []int, line int) int {
+	sawMarker := false
+	// fallback is where to stop if a second marker turns up before any "%"
+	// directive claims the comments in between: those comments sit between
+	// our own opening marker and an earlier, separate (and possibly
+	// comment-only, now-discarded) document, so they aren't ours either.
+	// It starts out pointing at our own marker, and only moves further back
+	// when a directive actually owns the lines above it.
+	var fallback int
+	for line > 1 {
+		text := bytes.TrimLeft(bytes.TrimRight(src[lineOffsets[line-1]:lineOffsets[line]], "\r\n"), " \t")
+		switch {
+		case len(text) == 0, text[0] == '#':
+			// Comment/blank lines are valid on either side of the marker.
+		case bytes.Equal(text, []byte("---")), bytes.Equal(text, []byte("...")):
+			if sawMarker {
+				return fallback // a second marker belongs to a different document
+			}
+			sawMarker = true
+			fallback = line - 1
+		case text[0] == '%':
+			if !sawMarker {
+				return line // a directive with no marker below it isn't ours
+			}
+			fallback = line - 1
+		default:
+			return line
+		}
+		line--
+	}
+	return line
 }
 
 // nodeToValue converts a parsed yaml.Node tree into the same JSON-compatible
