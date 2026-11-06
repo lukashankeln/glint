@@ -124,7 +124,7 @@ This release is mostly a hardening pass: glint can now be pointed at untrusted o
 
 * add pre-commit hooks ([160414e](https://github.com/lukashankeln/glint/commit/160414e1851b416634850cae288dc2dbe7057606))
 * **discovery:** resolve Flux sources for HelmReleases and Kustomizations ([b565222](https://github.com/lukashankeln/glint/commit/b565222acd4f5171cca4b559d7e81bdddc117ce7))
-* swith to go releaser and also publish as homebrew package ([863f044](https://github.com/lukashankeln/glint/commit/863f044e6be8d8e7e7abb66010e50743ee4e2d0c)), closes [#81](https://github.com/lukashankeln/glint/issues/81)
+* switch to go releaser and also publish as homebrew package ([863f044](https://github.com/lukashankeln/glint/commit/863f044e6be8d8e7e7abb66010e50743ee4e2d0c)), closes [#81](https://github.com/lukashankeln/glint/issues/81)
 
 ## [0.2.4](https://github.com/lukashankeln/glint/compare/v0.2.3...v0.2.4) (2026-10-18)
 
@@ -159,7 +159,7 @@ This release is mostly a hardening pass: glint can now be pointed at untrusted o
 
 ### Bug Fixes
 
-* dependecy issue ([a44fe0a](https://github.com/lukashankeln/glint/commit/a44fe0a29ee57a1c5743316783026eed8784d003))
+* dependency issue ([a44fe0a](https://github.com/lukashankeln/glint/commit/a44fe0a29ee57a1c5743316783026eed8784d003))
 * **deps:** update golang docker tag to v1.27.2 ([3561bac](https://github.com/lukashankeln/glint/commit/3561bacb71dd6087361e9a8d81064ccb71f6ac2c))
 * **deps:** update module github.com/bmatcuk/doublestar/v4 to v4.10.3 ([857f281](https://github.com/lukashankeln/glint/commit/857f281272ad079b17028e741bed59fa71a0bde3))
 * **deps:** update module sigs.k8s.io/kustomize/api to v0.21.3 ([2636a03](https://github.com/lukashankeln/glint/commit/2636a037e09d1c18bcd8d029b91ea5f47c66c654))
@@ -272,7 +272,7 @@ This release is mostly a hardening pass: glint can now be pointed at untrusted o
 
 ### Bug Fixes
 
-* github action should use go 1.26 as defualt ([f1d2ec6](https://github.com/lukashankeln/glint/commit/f1d2ec6063b4d20d52298bb4cc718b43b30985b7))
+* github action should use go 1.26 as default ([f1d2ec6](https://github.com/lukashankeln/glint/commit/f1d2ec6063b4d20d52298bb4cc718b43b30985b7))
 
 ## [0.1.11](https://github.com/lukashankeln/glint/compare/v0.1.10...v0.1.11) (2026-06-05)
 
@@ -350,7 +350,7 @@ This release is mostly a hardening pass: glint can now be pointed at untrusted o
 * improve logging in code as well as action ([858b92c](https://github.com/lukashankeln/glint/commit/858b92c1794d294f10a5f675ab5415917082354e))
 * only run glint once in github action if sarif upload is active ([d59e1c1](https://github.com/lukashankeln/glint/commit/d59e1c1507b9831b5d1944fa9c62e90dc571a91e))
 * parallelize discovery of files ([9c0345e](https://github.com/lukashankeln/glint/commit/9c0345ef662c5976072f16ce7ff528c798491b9a))
-* parallelize rendering of applciations ([fe2ebf2](https://github.com/lukashankeln/glint/commit/fe2ebf244294a2d5f00be683f7d5eac841686ff1))
+* parallelize rendering of applications ([fe2ebf2](https://github.com/lukashankeln/glint/commit/fe2ebf244294a2d5f00be683f7d5eac841686ff1))
 
 ## [0.1.1](https://github.com/lukashankeln/glint/compare/v0.1.0...v0.1.1) (2026-05-18)
 
