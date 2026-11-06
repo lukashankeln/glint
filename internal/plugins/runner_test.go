@@ -73,7 +73,12 @@ func TestMain(m *testing.M) {
 	case "orphan-hang":
 		startHelperGrandchild()
 		waitHelperPidfile()
-		select {}
+		// A bare select{} has only the main goroutine left and no pending
+		// timer, so the Go runtime's deadlock detector kills it instantly
+		// instead of letting the test's context timeout fire. Sleeping
+		// keeps a pending timer alive so the process actually hangs until
+		// the parent kills it.
+		time.Sleep(time.Hour)
 	case "orphan-exit":
 		startHelperGrandchild()
 		waitHelperPidfile()
