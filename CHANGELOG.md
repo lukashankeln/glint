@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/lukashankeln/glint/compare/v0.3.1...v0.3.2) (2026-11-07)
+
+
+### Performance
+
+* replace yaml.marshal and recude memory footprint ([e81374b](https://github.com/lukashankeln/glint/commit/e81374b5936f36fa5d8056de6d03e05436d88bb5))
+
 ## [0.3.1](https://github.com/lukashankeln/glint/compare/v0.3.0...v0.3.1) (2026-11-06)
 
 
