@@ -20,6 +20,7 @@ If no config file is found, glint runs with built-in defaults. Run `glint init` 
 | `render` | object | — | Renderer settings |
 | `rules` | object | — | Policy rule configuration |
 | `output` | object | — | Output formatting |
+| `plugins` | []object | — | External plugin commands; see [plugins.md](plugins.md) |
 | `fail_on` | []string | `[error]` | Severities that produce exit code 1 |
 
 ---
