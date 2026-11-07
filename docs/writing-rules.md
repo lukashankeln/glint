@@ -1,6 +1,6 @@
 # Writing custom rules
 
-glint policies are [CEL](https://cel.dev) expressions evaluated against each Kubernetes manifest. A rule returns `true` to indicate the resource is **compliant**; anything else produces a violation.
+glint policies are [CEL](https://cel.dev) expressions evaluated against each Kubernetes manifest. A rule returns `true` to indicate the resource is **compliant**; anything else produces a violation (except an evaluation error with `on_eval_error: warning`, which is skipped and reports nothing).
 
 This guide covers where rules live, the rule file format, the field reference, how a rule is evaluated, the variables and functions available to expressions, message templates, worked examples and a testing workflow.
 
@@ -67,7 +67,7 @@ rules:
 | Shown as source in `glint rules list` | `glint.yaml` | the file path |
 | `severity` validated | at config load | when the file is loaded |
 | `on_eval_error` validated | at config load | not validated (see [below](#evaluation-errors-and-on_eval_error)) |
-| Checked with `glint rules validate` | no (it only accepts rule files) | yes |
+| Checked with `glint rules validate` | no (`glint rules validate glint.yaml` fails with a parse error, because `rules` there is a mapping, not a list) | yes |
 | Rule without an `id` | not skipped | skipped silently |
 
 Which to choose:
@@ -94,7 +94,7 @@ match:                     # pre-filter (optional)
   labels:
     team: platform
 expression: |              # CEL expression
-  resource.spec.replicas >= 2
+  has(resource.spec.replicas) && resource.spec.replicas >= 2
 message: "{{ .kind }}/{{ .name }} requires replicas >= 2"
 ```
 
@@ -106,7 +106,7 @@ message: "{{ .kind }}/{{ .name }} requires replicas >= 2"
 | `description` | string | empty | Shown to humans; not used in evaluation. |
 | `severity` | string | `error` | `error`, `warning` or `info`. Case-insensitive. Unknown values are rejected when loading config or rule files, and `glint rules validate` exits with an error. |
 | `match` | object | match everything | Pre-filter; see [Match filters](#match-filters). |
-| `expression` | string | none | CEL expression; `true` means compliant. A rule with an empty expression is skipped entirely. |
+| `expression` | string | none | CEL expression; `true` means compliant. A rule with an empty expression is skipped entirely: it is dropped before compilation, so it appears in neither `glint lint` nor `glint rules list`. |
 | `message` | string | empty | Go `text/template` shown with each violation; see [Message templates](#message-templates). |
 | `on_eval_error` | string | `error` | What to do when the expression fails at runtime: `error` or `warning`. See [Evaluation errors](#evaluation-errors-and-on_eval_error). |
 
@@ -155,8 +155,8 @@ Behaviour of the loader (`internal/rules/loader.go`):
 - A file with a top-level `rules` key that fails to parse is an error; it is not silently treated as an empty or single-rule file.
 - An unknown `severity` is an error naming the file and rule.
 - `rule_files` entries are glob patterns (Go `filepath.Glob`: `*`, `?`, `[...]`; `**` is not recursive). A relative pattern resolves against the **working directory of the glint process**, not the directory of `glint.yaml`; nothing joins it with the config location. Run glint from the repository root, or use an absolute path, when the two differ.
-- A pattern that matches no file is silently ignored, so a typo in a path loads no rules and reports nothing. Check with `glint rules list`.
-- A path matched by several patterns is loaded once. Two different paths defining the same `id` are both loaded.
+- A pattern that matches no file is silently ignored, so a typo in a path loads no rules and reports nothing. Check with `glint rules list`. A malformed pattern (for example `[`) is different: it is an error (`invalid glob`).
+- Duplicates are detected by the exact path string `filepath.Glob` returns, so a file matched by several patterns is loaded once only when the patterns yield the same string. `policies/p.yaml` and `./policies/p.yaml` load the file twice. Two different paths defining the same `id` are both loaded.
 - `on_eval_error` in rule files is not validated. Any value other than `warning` behaves like the default `error`.
 
 ---
@@ -177,7 +177,7 @@ For every manifest, each rule is processed in this order (`evaluateManifest` in 
 Compile-time behaviour:
 
 - Every expression is compiled once when the engine starts. A compile error fails the whole run with `rule "<id>": CEL compile error: ...`, even for rules that would never match a manifest.
-- A rule whose expression is empty is skipped before compilation and never evaluated.
+- A rule whose expression is empty is skipped before compilation and never evaluated (and so is not shown by `glint rules list`).
 - `glint lint --only-rules` and `--skip-rules` filter the reported violations after evaluation; they do not stop other rules from being compiled, so a broken expression in any rule still fails the run.
 
 ---
@@ -233,13 +233,13 @@ Every expression has access to these variables:
 |----------|------|-------------|
 | `resource` | `map` | Full manifest (Kubernetes Unstructured) |
 | `name` | `string` | `metadata.name` |
-| `namespace` | `string` | `metadata.namespace` (empty for cluster-scoped) |
+| `namespace` | `string` | `metadata.namespace` (empty for cluster-scoped resources and for namespaced manifests without an explicit `metadata.namespace`; glint does not default it) |
 | `kind` | `string` | e.g. `"Deployment"` |
 | `apiVersion` | `string` | e.g. `"apps/v1"` |
 | `labels` | `map<string,string>` | `metadata.labels` |
 | `annotations` | `map<string,string>` | `metadata.annotations` |
 
-`labels` and `annotations` are always maps, empty when the manifest has none. Non-string label or annotation values are left out.
+Because `namespace` is not defaulted, `match.namespaces` / `exclude_namespaces` filters also see that empty value. `labels` and `annotations` are always maps, empty when the manifest has none. Non-string label or annotation values are left out.
 
 ### `hasLabel` and `hasAnnotation`
 
@@ -338,22 +338,31 @@ An expression that reads `resource.spec.template...` fails with an evaluation er
 Covers every workload shape, including init containers:
 
 ```yaml
-id: no-latest-tag
+id: no-latest-tag-custom
 description: "Container images must be pinned to a specific tag"
 severity: error
 match:
   kinds: [Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob]
 expression: |
   (!has(resource.spec.containers) ||
-    resource.spec.containers.all(c, imageTag(c.image) != "latest")) &&
+    (resource.spec.containers.all(c, imageTag(c.image) != "latest") &&
+      (!has(resource.spec.initContainers) ||
+        resource.spec.initContainers == null ||
+        resource.spec.initContainers.all(c, imageTag(c.image) != "latest")))) &&
   (!has(resource.spec.template) ||
-    resource.spec.template.spec.containers.all(c, imageTag(c.image) != "latest")) &&
+    (resource.spec.template.spec.containers.all(c, imageTag(c.image) != "latest") &&
+      (!has(resource.spec.template.spec.initContainers) ||
+        resource.spec.template.spec.initContainers == null ||
+        resource.spec.template.spec.initContainers.all(c, imageTag(c.image) != "latest")))) &&
   (!has(resource.spec.jobTemplate) ||
-    resource.spec.jobTemplate.spec.template.spec.containers.all(c, imageTag(c.image) != "latest"))
+    (resource.spec.jobTemplate.spec.template.spec.containers.all(c, imageTag(c.image) != "latest") &&
+      (!has(resource.spec.jobTemplate.spec.template.spec.initContainers) ||
+        resource.spec.jobTemplate.spec.template.spec.initContainers == null ||
+        resource.spec.jobTemplate.spec.template.spec.initContainers.all(c, imageTag(c.image) != "latest"))))
 message: "{{ .kind }}/{{ .name }} has a container with :latest image"
 ```
 
-(The shipped built-in rule of the same ID also checks `initContainers`. If you define a custom rule with the same `id`, both are loaded; give yours a different ID.)
+(This mirrors the shipped built-in `no-latest-tag` rule, which is why the ID here is different: if a custom rule reuses a built-in `id`, both are loaded and every violation is reported twice.)
 
 ### Minimum replicas in production
 
@@ -472,19 +481,35 @@ message: "{{ .kind }}/{{ .name }} should use digest-pinned images in production"
 
 ### Tolerate evaluation errors
 
-For a rule over fields that may not exist, skip the resource instead of reporting an error:
+Guard optional fields with `has()` so a missing field is a violation rather than an evaluation error. With `on_eval_error: warning` the missing key would be skipped and never reported:
 
 ```yaml
 id: ingress-class-set
 description: "Ingresses must set an ingress class"
 severity: warning
-on_eval_error: warning
 match:
   kinds: [Ingress]
 expression: |
-  resource.spec.ingressClassName != ""
+  has(resource.spec.ingressClassName) && resource.spec.ingressClassName != ""
 message: "{{ .kind }}/{{ .name }} has no ingressClassName"
 ```
+
+Use `on_eval_error: warning` only where skipping a resource is acceptable, for example a rule over a custom resource whose field shape varies across versions:
+
+```yaml
+id: certificate-issuer-kind
+description: "Certificates must reference a ClusterIssuer"
+severity: warning
+on_eval_error: warning
+match:
+  kinds: [Certificate]
+  api_groups: [cert-manager.io]
+expression: |
+  resource.spec.issuerRef.kind == "ClusterIssuer"
+message: "{{ .kind }}/{{ .name }} should reference a ClusterIssuer"
+```
+
+A Certificate without `spec.issuerRef.kind` raises an evaluation error and is silently skipped (only a log warning), so such resources are not reported.
 
 ---
 
@@ -497,11 +522,11 @@ message: "{{ .kind }}/{{ .name }} has no ingressClassName"
    ```
 
    It exits non-zero when a CEL expression fails to compile, a file cannot be parsed or a severity is unknown. Its limits (`internal/cli/rules.go`):
-   - It only accepts rule files, not `glint.yaml`. Inline rules are compiled by `glint lint` (and `glint rules list`), which fail on a compile error.
+   - It only accepts rule files, not `glint.yaml` (passing it fails with a parse error, since `rules` there is a mapping). Inline rules are compiled by `glint lint` (and `glint rules list`), which fail on a compile error.
    - It only compiles. It does not run the expression against manifests, so evaluation errors from missing fields are not caught, and it does not check `match` or `on_eval_error`.
    - It compiles every loaded rule's expression, including an empty one, which fails with a CEL syntax error; `glint lint` skips rules with an empty expression.
    - Arguments are globs, like `rule_files`. A path that matches nothing prints `No rules found in provided files.` and exits `0`, so check the path if you expected output.
-2. **Confirm the rule is loaded.** `glint rules list` shows each rule's ID, severity, enabled state and source (`built-in`, `glint.yaml` for inline rules, or the rule file path):
+2. **Confirm the rule is loaded.** `glint rules list` shows each compiled rule's ID, severity, enabled state and source (`built-in`, `glint.yaml` for inline rules, or the rule file path). A rule with an empty `expression` is not compiled and does not appear:
 
    ```bash
    glint rules list
@@ -527,23 +552,23 @@ message: "{{ .kind }}/{{ .name }} has no ingressClassName"
 # Good
 match:
   kinds: [Deployment]
-expression: "resource.spec.replicas >= 2"
+expression: "has(resource.spec.replicas) && resource.spec.replicas >= 2"
 
 # Avoid
-expression: "kind == 'Deployment' && resource.spec.replicas >= 2"
+expression: "kind == 'Deployment' && has(resource.spec.replicas) && resource.spec.replicas >= 2"
 ```
 
 **Use `has()` before accessing optional fields.** CEL fails the evaluation on missing fields (see [Evaluation errors](#evaluation-errors-and-on_eval_error)):
 
 ```yaml
-# Safe
+# Safe (match kinds: [Pod])
 expression: |
-  !has(resource.spec.securityContext) ||
-  !has(resource.spec.securityContext.runAsRoot) ||
-  resource.spec.securityContext.runAsRoot == false
+  has(resource.spec.securityContext) &&
+  has(resource.spec.securityContext.runAsNonRoot) &&
+  resource.spec.securityContext.runAsNonRoot == true
 
 # Evaluation error if securityContext is absent
-expression: "resource.spec.securityContext.runAsRoot == false"
+expression: "resource.spec.securityContext.runAsNonRoot == true"
 ```
 
 **Return a boolean.** Only `true` passes; a non-boolean result is reported as a violation.
