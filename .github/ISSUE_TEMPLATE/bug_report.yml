@@ -12,7 +12,7 @@ body:
     id: version
     attributes:
       label: glint version
-      description: Output of `glint version`. If you use the GitHub Action, the pre-commit hook or the Docker image, give the image or action tag you pin instead.
+      description: Output of `glint version`. If you use the GitHub Action, the pre-commit hook or the Docker image, give the action ref, image tag or pre-commit `rev` you pin instead.
       render: text
     validations:
       required: true
