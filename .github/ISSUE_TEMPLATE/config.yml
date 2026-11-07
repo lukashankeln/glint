@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://github.com/lukashankeln/glint/blob/main/docs/README.md
+    about: Configuration, writing rules, plugins, CLI and CI guides.
