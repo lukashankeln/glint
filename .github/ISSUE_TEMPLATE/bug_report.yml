@@ -12,7 +12,7 @@ body:
     id: version
     attributes:
       label: glint version
-      description: Output of `glint version`.
+      description: Output of `glint version`. If you use the GitHub Action, the pre-commit hook or the Docker image, give the image or action tag you pin instead.
       render: text
     validations:
       required: true
@@ -50,7 +50,7 @@ body:
     id: framework
     attributes:
       label: Framework
-      description: The framework glint detected during discovery, or the one you forced with `glint init --framework` (`argocd`, `flux` or `plain`).
+      description: The framework of the app that misbehaves. `glint discover` lists each app with its detected framework.
       options:
         - argocd
         - flux
