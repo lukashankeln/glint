@@ -175,7 +175,7 @@ See [`docs/plugins.md`](docs/plugins.md) for config fields, the kubeconform adap
 
 ## CLI reference
 
-Commands: `glint lint`, `discover`, `render`, `rules list|validate`, `init`. Exit codes: `0` = clean, `1` = violations found, `2` = pipeline error. Output formats: `text`, `json`, `github-actions`, `sarif`, `junit`.
+Commands: `glint lint`, `glint discover`, `glint render`, `glint rules list`, `glint rules validate`, `glint init`, `glint version`. Exit codes: `0` = clean, `1` = violations found, `2` = pipeline error. Output formats: `text`, `json`, `github-actions`, `sarif`, `junit`.
 
 See [`docs/cli.md`](docs/cli.md) for all flags and output formats.
 
