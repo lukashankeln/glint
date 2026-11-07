@@ -72,70 +72,17 @@ glint rules list
 
 ---
 
-## GitHub Actions
+## CI integration
 
-Add to any GitOps repository in two steps.
-
-**1. Create `.github/workflows/glint.yml`:**
+Run glint as a GitHub Action (inline PR annotations, SARIF upload) or as a pre-commit hook:
 
 ```yaml
-name: GitOps Lint
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-
-jobs:
-  lint:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write  # for SARIF upload to Security tab
-      actions: read           # required by codeql-action/upload-sarif
-
-    steps:
-      - uses: actions/checkout@v4
-      - uses: lukashankeln/glint@v0.1.16
-        with:
-          fail-on: "error"
-      - uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: glint-results.sarif
+- uses: lukashankeln/glint@v0.1.16
+  with:
+    fail-on: "error"
 ```
 
-**2. That's it.** glint will:
-- Post inline PR annotations for every violation
-- Write SARIF results to `glint-results.sarif` for upload to the Security tab
-- Fail the workflow on `error`-severity violations
-
-**Action inputs:**
-
-| Input | Default | Description |
-|-------|---------|-------------|
-| `config` | `glint.yaml` | Path to config file |
-| `format` | `github-actions` | Output format |
-| `fail-on` | `error` | Severities that fail the step |
-| `sarif-file` | `glint-results.sarif` | SARIF output path |
-| `paths` | `.` | Space-separated paths to lint |
-
----
-
-## pre-commit
-
-Add to `.pre-commit-config.yaml`:
-
-```yaml
-repos:
-  - repo: https://github.com/lukashankeln/glint
-    rev: v0.2.9
-    hooks:
-      - id: glint         # builds from source, requires Go
-      # - id: glint-docker  # uses the published container image, requires Docker
-```
-
-The hook lints the whole repository whenever a staged `.yaml`, `.yml`, `.json` or `.tpl` file changes. Pass extra flags via `args`, e.g. `args: [--fail-on, "error,warning"]`.
+See [`docs/ci.md`](docs/ci.md) for the full workflow, action inputs and pre-commit setup.
 
 ---
 
@@ -214,118 +161,35 @@ See [`docs/writing-rules.md`](docs/writing-rules.md) for a full guide with examp
 
 ## Plugins
 
-Plugins let any external tool participate in the lint pipeline and surface findings as native glint violations. They run after rendering, receive each app's manifests as YAML on stdin, and write violations as JSON to stdout.
+Plugins let any external tool participate in the lint pipeline and surface findings as native glint violations:
 
 ```yaml
-# glint.yaml
 plugins:
   - name:    my-validator
     command: ./scripts/validate.sh
-    args:    ["--strict"]
 ```
 
-Plugin violations feed into the same output formatters, `fail_on` logic, and `--skip-rules`/`--only-rules` filters as CEL rules. The `source` field on each violation is set to the plugin name.
-
-**Plugin config fields:**
-
-| Field | Default | Description |
-|-------|---------|-------------|
-| `name` | required | Unique identifier for this plugin |
-| `command` | required | Executable to run |
-| `args` | `[]` | Arguments passed before manifest input |
-| `adapter` | — | Built-in adapter name (e.g. `kubeconform`) for third-party tools |
-| `severity` | — | Override severity for all violations from this plugin |
-| `input` | `stdin` | How manifests are passed: `stdin` or `file` (path appended to args) |
-| `timeout` | `30s` | Kill the plugin after this duration (e.g. `"60s"`, `"2m"`). The plugin's output pipes are closed after a short grace period so a leftover child process cannot hold the run open; a child still holding output open after the plugin exits fails `glint lint` |
-| `allow_nonzero_exit` | `false` | Suppress the eval-error violation when the plugin exits non-zero (for tools that exit 1 on findings) |
-| `env` | `{}` | Extra environment variables |
-
-Plugin stdout is capped at 32 MiB (the run fails with an output-limit error) and stderr shown in errors is truncated at 64 KiB; see [Limits](docs/configuration.md#limits).
-
-**kubeconform** — validate manifests against Kubernetes JSON schemas:
-
-```yaml
-plugins:
-  - name:    kubeconform
-    command: kubeconform
-    args:    ["-strict", "-output", "json", "-"]
-    adapter: kubeconform
-    severity: error
-```
-
-Install kubeconform: `brew install kubeconform` or see [github.com/yannh/kubeconform](https://github.com/yannh/kubeconform).
-
-**Native output protocol** — plugins without an adapter must write a JSON array to stdout:
-
-```json
-[
-  {
-    "rule_id":   "my-linter/check-name",
-    "severity":  "error",
-    "message":   "hostNetwork must not be true",
-    "file_path": "apps/api/deployment.yaml",
-    "resource": {
-      "kind":      "Deployment",
-      "name":      "api",
-      "namespace": "production"
-    }
-  }
-]
-```
-
-All fields except `rule_id`, `severity`, and `message` are optional.
+See [`docs/plugins.md`](docs/plugins.md) for config fields, the kubeconform adapter and the output protocol.
 
 ---
 
 ## CLI reference
 
-```
-glint lint [path...] [flags]
-  --config string        config file (default: glint.yaml)
-  --format string        text | json | sarif | junit | github-actions
-  --fail-on string       comma-separated severities (default: from config)
-  --output string        write output to file
-  --output-sarif string  write SARIF report to file
-  --output-junit string  write JUnit report to file
-  --output-json string   write JSON summary to file (for CI step capture)
-  --only-rules string    run only these rule IDs
-  --skip-rules string    skip these rule IDs
+Commands: `glint lint`, `discover`, `render`, `rules list|validate`, `init`. Exit codes: `0` = clean, `1` = violations found, `2` = pipeline error. Output formats: `text`, `json`, `github-actions`, `sarif`, `junit`.
 
-glint discover [path...]
-  -f, --format string    text | json
-
-glint render [path...]
-  -f, --format string    yaml | json
-  -o, --output string    directory to write per-app files (default: stdout)
-
-glint rules list
-glint rules validate [file...]
-
-glint init [path]
-  --force                overwrite existing glint.yaml
-  --framework string     argocd | flux | plain (default: auto-detect)
-```
-
-**Exit codes:** `0` = clean, `1` = violations found, `2` = pipeline error
-
-An app that fails to render is a `glint/render-error` violation in `glint lint`, and `glint render` exits `2` if any app fails. With `--output`, an app whose file cannot be fully written also makes `glint render` exit `2`, and a partially written regular file is removed.
-
-In `glint lint`, a report file (`--output`, `--output-sarif`, `--output-junit`, `--output-json`) that cannot be fully written or closed makes the run exit `2` regardless of `fail_on`, and a partially written regular file is removed.
+See [`docs/cli.md`](docs/cli.md) for all flags and output formats.
 
 ---
 
-## Output formats
+## Documentation
 
-| Format | Use case |
-|--------|----------|
-| `text` | Human-readable terminal output (default) |
-| `json` | Machine-readable, stable schema |
-| `github-actions` | GitHub workflow annotations on PRs (auto-selected when `GITHUB_ACTIONS=true`) |
-| `sarif` | GitHub Security tab / Code Scanning |
+See [`docs/README.md`](docs/README.md) for the index.
 
-The `text` and `github-actions` formats escape non-printable and bidi characters in severities, rule IDs, messages, file paths and resource names; `json`, `sarif` and `junit` carry the raw values (JSON-/XML-encoded).
-
-`glint discover` (text output) and `glint render` (the stdout `# --- app:` header and error messages) escape the same characters in app names, render targets and sources; `discover --format json`, the rendered manifests and the `--output` file names keep the raw values.
+- [Configuration](docs/configuration.md)
+- [Writing custom rules](docs/writing-rules.md)
+- [Plugins](docs/plugins.md)
+- [CLI reference and output formats](docs/cli.md)
+- [GitHub Actions and pre-commit](docs/ci.md)
 
 ---
 
