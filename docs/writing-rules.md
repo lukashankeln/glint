@@ -1,6 +1,6 @@
 # Writing custom rules
 
-glint policies are [CEL](https://cel.dev) expressions evaluated against each Kubernetes manifest. A rule returns `true` to indicate the resource is **compliant**; anything else produces a violation (except an evaluation error with `on_eval_error: warning`, which is skipped and reports nothing).
+glint policies are [CEL](https://cel.dev) expressions evaluated against each Kubernetes manifest. A rule returns `true` to indicate the resource is **compliant**; anything else produces a violation (except an evaluation error with `on_eval_error: warning`, which is skipped with only a log warning and produces no violation).
 
 This guide covers where rules live, the rule file format, the field reference, how a rule is evaluated, the variables and functions available to expressions, message templates, worked examples and a testing workflow.
 
@@ -233,7 +233,7 @@ Every expression has access to these variables:
 |----------|------|-------------|
 | `resource` | `map` | Full manifest (Kubernetes Unstructured) |
 | `name` | `string` | `metadata.name` |
-| `namespace` | `string` | `metadata.namespace` (empty for cluster-scoped resources and for namespaced manifests without an explicit `metadata.namespace`; glint does not default it) |
+| `namespace` | `string` | `metadata.namespace` (empty for cluster-scoped resources and for namespaced manifests without an explicit `metadata.namespace`; glint does not default it). **Not usable in expressions:** `namespace` is a reserved word in CEL, so any expression that references it fails with `reserved identifier: namespace`. Use `match.namespaces` / `exclude_namespaces`, or read `resource.metadata.namespace` behind a `has(resource.metadata.namespace)` guard |
 | `kind` | `string` | e.g. `"Deployment"` |
 | `apiVersion` | `string` | e.g. `"apps/v1"` |
 | `labels` | `map<string,string>` | `metadata.labels` |
@@ -479,7 +479,7 @@ expression: |
 message: "{{ .kind }}/{{ .name }} should use digest-pinned images in production"
 ```
 
-### Tolerate evaluation errors
+### Evaluation errors: guard or tolerate
 
 Guard optional fields with `has()` so a missing field is a violation rather than an evaluation error. With `on_eval_error: warning` the missing key would be skipped and never reported:
 
@@ -494,22 +494,7 @@ expression: |
 message: "{{ .kind }}/{{ .name }} has no ingressClassName"
 ```
 
-Use `on_eval_error: warning` only where skipping a resource is acceptable, for example a rule over a custom resource whose field shape varies across versions:
-
-```yaml
-id: certificate-issuer-kind
-description: "Certificates must reference a ClusterIssuer"
-severity: warning
-on_eval_error: warning
-match:
-  kinds: [Certificate]
-  api_groups: [cert-manager.io]
-expression: |
-  resource.spec.issuerRef.kind == "ClusterIssuer"
-message: "{{ .kind }}/{{ .name }} should reference a ClusterIssuer"
-```
-
-A Certificate without `spec.issuerRef.kind` raises an evaluation error and is silently skipped (only a log warning), so such resources are not reported.
+Use `on_eval_error: warning` only where skipping a resource is genuinely acceptable: a resource whose evaluation fails is then not checked at all and produces no violation, only a log warning. If the resources that would raise the error are exactly the ones the rule should catch, guard with `has()` instead.
 
 ---
 

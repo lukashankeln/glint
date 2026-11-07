@@ -152,7 +152,7 @@ glint provides extra functions on top of standard CEL:
 |----------|---------|
 | `imageTag(image)` | `imageTag(c.image) != "latest"` |
 | `inList(value, list)` | `inList(kind, ["Deployment", "StatefulSet"])` |
-| `matchesGlob(str, pattern)` | `matchesGlob(namespace, "prod-*")` |
+| `matchesGlob(str, pattern)` | `matchesGlob(name, "legacy-*")` |
 | `semverLT(a, b)` | `semverLT(imageTag(c.image), "2.0.0")` |
 
 See [`docs/writing-rules.md`](docs/writing-rules.md) for a full guide with examples.
