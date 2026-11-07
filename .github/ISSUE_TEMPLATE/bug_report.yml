@@ -1,0 +1,82 @@
+name: Bug report
+description: Report a problem with glint
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug.
+
+        Please **redact secrets and tokens, private registry names, and cluster names** from everything you paste below (config, manifests, logs and command output).
+  - type: textarea
+    id: version
+    attributes:
+      label: glint version
+      description: Output of `glint version`.
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Install method
+      description: How did you install or run glint?
+      options:
+        - Release binary / Homebrew
+        - Docker image
+        - GitHub Action
+        - pre-commit
+        - go install
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: Command
+      description: The command you ran, including flags.
+      placeholder: glint lint --config glint.yaml .
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration
+      description: A minimal `glint.yaml` that reproduces the problem.
+      render: yaml
+    validations:
+      required: true
+  - type: dropdown
+    id: framework
+    attributes:
+      label: Framework
+      description: The framework glint detected during discovery, or the one you forced with `glint init --framework` (`argocd`, `flux` or `plain`).
+      options:
+        - argocd
+        - flux
+        - plain (raw YAML / Kustomize / Helm without Argo CD or Flux)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: |
+        What happened instead? Include the exit code (`0` clean, `1` violations found, `2` pipeline error) and any relevant log output. Rerun with `--log-level debug` for more detail.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Minimal manifests or a repo layout that reproduce the problem.
+    validations:
+      required: false
