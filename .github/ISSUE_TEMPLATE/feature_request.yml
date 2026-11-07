@@ -1,0 +1,53 @@
+name: Feature request
+description: Suggest an idea or a new built-in rule for glint
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement.
+
+        Please **redact secrets and tokens, private registry names, and cluster names** from anything you paste below.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / use case
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How would you like glint to solve it?
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches or workarounds you have tried or thought about.
+    validations:
+      required: false
+  - type: markdown
+    attributes:
+      value: |
+        ## Rule request
+
+        Fill in this section only when you are asking for a new built-in rule. A custom CEL rule may already cover your need, see [writing rules](https://github.com/lukashankeln/glint/blob/main/docs/writing-rules.md).
+  - type: textarea
+    id: rule-resources
+    attributes:
+      label: Resources the rule applies to
+      description: Which resources (kinds) should the rule check?
+      placeholder: Deployment, StatefulSet, DaemonSet
+    validations:
+      required: false
+  - type: textarea
+    id: rule-example
+    attributes:
+      label: Example violating manifest
+      description: A minimal manifest that the rule should flag.
+      render: yaml
+    validations:
+      required: false
