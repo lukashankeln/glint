@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"runtime"
 	"slices"
+	"strings"
 	"sync"
 	"text/template"
 
@@ -49,6 +50,13 @@ func NewEngine(cfg config.RulesConfig) (*Engine, error) {
 	}
 	defs = append(defs, builtIns...)
 
+	// Opt-in catalog rules
+	catalog, err := LoadCatalogs(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("loading rule catalogs: %w", err)
+	}
+	defs = append(defs, catalog...)
+
 	// Inline custom rules from config
 	inline, err := LoadCustomInline(cfg)
 	if err != nil {
@@ -63,6 +71,10 @@ func NewEngine(cfg config.RulesConfig) (*Engine, error) {
 			return nil, fmt.Errorf("loading rule files: %w", err)
 		}
 		defs = append(defs, external...)
+	}
+
+	if err := checkCatalogCollisions(defs); err != nil {
+		return nil, err
 	}
 
 	compiled := make([]CompiledRule, 0, len(defs))
@@ -241,4 +253,24 @@ func renderMessage(tmpl *template.Template, fallback string, severity Severity, 
 		return fallback
 	}
 	return buf.String()
+}
+
+// checkCatalogCollisions rejects a catalog rule whose ID equals the ID of any
+// non-catalog rule. Duplicates among non-catalog rules are not checked here.
+func checkCatalogCollisions(defs []RuleDef) error {
+	isCatalog := func(d RuleDef) bool { return strings.HasPrefix(d.Source, "catalog:") }
+	others := map[string]string{}
+	for _, d := range defs {
+		if !isCatalog(d) {
+			others[d.ID] = d.Source
+		}
+	}
+	for _, d := range defs {
+		if isCatalog(d) {
+			if src, ok := others[d.ID]; ok {
+				return fmt.Errorf("rule ID %q from %s collides with rule from %s", d.ID, d.Source, src)
+			}
+		}
+	}
+	return nil
 }

@@ -1,0 +1,10 @@
+id: cis-5.7.4-default-namespace
+description: "CIS 5.7.4: The default namespace should not be used"
+severity: warning
+on_eval_error: error
+expression: |
+  !has(resource.metadata) ||
+  resource.metadata == null ||
+  !has(resource.metadata.namespace) ||
+  resource.metadata.namespace != "default"
+message: "{{ .kind }}/{{ .name }} is deployed to the default namespace"
