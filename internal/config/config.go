@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -100,6 +101,16 @@ type RulesConfig struct {
 	Custom     []CustomRuleDef    `yaml:"custom"`
 	RuleFiles  []string           `yaml:"rule_files"`
 	Exceptions []ExceptionConfig  `yaml:"exceptions"`
+	// Catalogs enables opt-in predefined rule catalogs by name (e.g. "cis").
+	// Nil by default: every catalog is off.
+	Catalogs map[string]CatalogConfig `yaml:"catalogs"`
+}
+
+// CatalogConfig configures one opt-in rule catalog.
+type CatalogConfig struct {
+	Enabled      bool     `yaml:"enabled"`
+	Severity     string   `yaml:"severity"` // overrides every rule's severity when set
+	ExcludeRules []string `yaml:"exclude_rules"`
 }
 
 type ExceptionConfig struct {
@@ -272,6 +283,17 @@ func (c *Config) Validate() error {
 	for _, b := range builtIns {
 		if b.sev != "" && !ValidSeverity(b.sev) {
 			return fmt.Errorf("rules.built_in.%s: unknown severity %q (must be error, warning, or info)", b.name, b.sev)
+		}
+	}
+
+	catNames := make([]string, 0, len(c.Rules.Catalogs))
+	for name := range c.Rules.Catalogs {
+		catNames = append(catNames, name)
+	}
+	sort.Strings(catNames)
+	for _, name := range catNames {
+		if sev := c.Rules.Catalogs[name].Severity; sev != "" && !ValidSeverity(sev) {
+			return fmt.Errorf("rules.catalogs.%s: unknown severity %q (must be error, warning, or info)", name, sev)
 		}
 	}
 

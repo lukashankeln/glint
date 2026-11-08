@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -17,6 +19,9 @@ import (
 
 //go:embed builtin
 var embeddedRules embed.FS
+
+//go:embed catalogs
+var embeddedCatalogs embed.FS
 
 // ruleFileDoc is the top-level structure for external rule YAML files.
 type ruleFileDoc struct {
@@ -280,4 +285,128 @@ func preprocessExpression(expr string) string {
 	expr = reHasLabel.ReplaceAllString(expr, `($1 in labels && labels[$1] != "")`)
 	expr = reHasAnnotation.ReplaceAllString(expr, `($1 in annotations && annotations[$1] != "")`)
 	return strings.TrimSpace(expr)
+}
+
+// catalogNames returns the embedded catalog names (subdirectories of catalogs/), sorted.
+func catalogNames() ([]string, error) {
+	entries, err := fs.ReadDir(embeddedCatalogs, "catalogs")
+	if err != nil {
+		return nil, fmt.Errorf("reading embedded catalogs: %w", err)
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+// loadCatalogFile reads every rule of one embedded catalog in sorted file order,
+// without applying any config. Rules are Enabled with their file severity.
+func loadCatalogFile(name string) ([]RuleDef, error) {
+	dir := "catalogs/" + name
+	entries, err := fs.ReadDir(embeddedCatalogs, dir)
+	if err != nil {
+		return nil, fmt.Errorf("reading embedded catalog %q: %w", name, err)
+	}
+	var defs []RuleDef
+	for _, e := range entries { // ReadDir returns entries sorted by filename
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
+			continue
+		}
+		path := dir + "/" + e.Name()
+		data, err := embeddedCatalogs.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("reading embedded rule %q: %w", path, err)
+		}
+		var ry ruleYAML
+		if err := yaml.Unmarshal(data, &ry); err != nil {
+			return nil, fmt.Errorf("parsing embedded rule %q: %w", path, err)
+		}
+		if ry.ID == "" {
+			return nil, fmt.Errorf("embedded rule %q: empty id", path)
+		}
+		if ry.Severity != "" && !config.ValidSeverity(ry.Severity) {
+			return nil, fmt.Errorf("embedded rule %q: unknown severity %q (must be error, warning, or info)", path, ry.Severity)
+		}
+		def := ruleYAMLToDef(ry, "catalog:"+name)
+		def.Enabled = true
+		def.Expression = preprocessExpression(def.Expression)
+		defs = append(defs, def)
+	}
+	return defs, nil
+}
+
+// CatalogRuleIDs returns the rule IDs of the named embedded catalog in load order.
+func CatalogRuleIDs(name string) ([]string, error) {
+	names, err := catalogNames()
+	if err != nil {
+		return nil, err
+	}
+	if !slices.Contains(names, name) {
+		return nil, fmt.Errorf("rules.catalogs: unknown catalog %q (available: %s)", name, strings.Join(names, ", "))
+	}
+	defs, err := loadCatalogFile(name)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, len(defs))
+	for i, d := range defs {
+		ids[i] = d.ID
+	}
+	return ids, nil
+}
+
+// LoadCatalogs loads the rules of every enabled catalog in cfg.Catalogs.
+// Excluded rules are kept with Enabled=false so `glint rules list` shows them.
+func LoadCatalogs(cfg config.RulesConfig) ([]RuleDef, error) {
+	cfgNames := make([]string, 0, len(cfg.Catalogs))
+	for n := range cfg.Catalogs {
+		cfgNames = append(cfgNames, n)
+	}
+	sort.Strings(cfgNames)
+
+	var out []RuleDef
+	for _, name := range cfgNames {
+		cc := cfg.Catalogs[name]
+		defs, err := loadCatalogOne(name, cc)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, defs...)
+	}
+	return out, nil
+}
+
+func loadCatalogOne(name string, cc config.CatalogConfig) ([]RuleDef, error) {
+	ids, err := CatalogRuleIDs(name) // also rejects unknown catalog names
+	if err != nil {
+		return nil, err
+	}
+	for _, ex := range cc.ExcludeRules {
+		if !slices.Contains(ids, ex) {
+			return nil, fmt.Errorf("rules.catalogs.%s.exclude_rules: unknown rule %q", name, ex)
+		}
+	}
+	if cc.Severity != "" && !config.ValidSeverity(cc.Severity) {
+		return nil, fmt.Errorf("rules.catalogs.%s: unknown severity %q (must be error, warning, or info)", name, cc.Severity)
+	}
+	if !cc.Enabled {
+		return nil, nil
+	}
+	defs, err := loadCatalogFile(name)
+	if err != nil {
+		return nil, err
+	}
+	for i := range defs {
+		if cc.Severity != "" {
+			defs[i].Severity = Severity(strings.ToLower(cc.Severity))
+		}
+		if slices.Contains(cc.ExcludeRules, defs[i].ID) {
+			defs[i].Enabled = false
+		}
+	}
+	return defs, nil
 }

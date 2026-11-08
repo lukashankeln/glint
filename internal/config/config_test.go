@@ -124,3 +124,22 @@ func TestValidate_OutputColor(t *testing.T) {
 		assert.Contains(t, err.Error(), fmt.Sprintf("output.color: unknown value %q (must be auto, always, or never)", v))
 	}
 }
+
+func TestValidate_CatalogSeverity(t *testing.T) {
+	for _, sev := range []string{"", "error", "Warning", "INFO"} {
+		cfg := validConfig(t)
+		cfg.Rules.Catalogs = map[string]CatalogConfig{"cis": {Enabled: true, Severity: sev}}
+		assert.NoError(t, cfg.Validate(), "severity %q", sev)
+	}
+
+	cfg := validConfig(t)
+	cfg.Rules.Catalogs = map[string]CatalogConfig{"cis": {Enabled: true, Severity: "x"}}
+	err := cfg.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `rules.catalogs.cis: unknown severity "x"`)
+}
+
+func TestDefault_NoCatalogs(t *testing.T) {
+	cfg := validConfig(t)
+	assert.Empty(t, cfg.Rules.Catalogs)
+}

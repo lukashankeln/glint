@@ -51,16 +51,20 @@ func newRulesListCmd() *cobra.Command {
 			}
 
 			// Text table
-			fmt.Fprintf(w, "%-30s  %-8s  %-7s  %s\n", "ID", "SEVERITY", "ENABLED", "SOURCE")
-			fmt.Fprintf(w, "%-30s  %-8s  %-7s  %s\n",
-				strings.Repeat("-", 30), "--------", "-------", "------")
+			idW := 30
+			for _, d := range defs {
+				idW = max(idW, len(d.ID))
+			}
+			fmt.Fprintf(w, "%-*s  %-8s  %-7s  %s\n", idW, "ID", "SEVERITY", "ENABLED", "SOURCE")
+			fmt.Fprintf(w, "%-*s  %-8s  %-7s  %s\n",
+				idW, strings.Repeat("-", idW), "--------", "-------", "------")
 			for _, d := range defs {
 				enabled := "no"
 				if d.Enabled {
 					enabled = "yes"
 				}
-				fmt.Fprintf(w, "%-30s  %-8s  %-7s  %s\n",
-					d.ID, string(d.Severity), enabled, d.Source)
+				fmt.Fprintf(w, "%-*s  %-8s  %-7s  %s\n",
+					idW, d.ID, string(d.Severity), enabled, d.Source)
 			}
 			return nil
 		},
