@@ -516,3 +516,48 @@ spec:
                 seccompProfile:
                   type: "RuntimeDefault"
           restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "override-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      securityContext:
+        seccompProfile:
+          type: "Unconfined"
+  securityContext:
+    seccompProfile:
+      type: "RuntimeDefault"
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "override-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "override"
+  template:
+    metadata:
+      labels:
+        app: "override"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          securityContext:
+            seccompProfile:
+              type: "Unconfined"
+      securityContext:
+        seccompProfile:
+          type: "RuntimeDefault"

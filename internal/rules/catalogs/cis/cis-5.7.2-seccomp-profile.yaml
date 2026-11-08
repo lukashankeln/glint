@@ -1,5 +1,6 @@
-# Passes when the pod securityContext sets a RuntimeDefault or Localhost seccompProfile
-# or every container does.
+# Passes when every container (including init containers) has an effective RuntimeDefault
+# or Localhost seccompProfile. A container's own seccompProfile.type overrides the
+# pod-level value; the pod-level value applies only to containers that set none.
 id: cis-5.7.2-seccomp-profile
 description: "CIS 5.7.2: Ensure that the seccomp profile is set to docker/default in your Pod definitions"
 severity: warning
@@ -15,6 +16,8 @@ match:
     - Job
     - CronJob
 expression: |
-  (has(podSpec(resource).securityContext) && podSpec(resource).securityContext != null && has(podSpec(resource).securityContext.seccompProfile) && podSpec(resource).securityContext.seccompProfile != null && has(podSpec(resource).securityContext.seccompProfile.type) && podSpec(resource).securityContext.seccompProfile.type != null && podSpec(resource).securityContext.seccompProfile.type in ["RuntimeDefault", "Localhost"]) ||
-    podContainers(resource).all(c, (has(c.securityContext) && c.securityContext != null && has(c.securityContext.seccompProfile) && c.securityContext.seccompProfile != null && has(c.securityContext.seccompProfile.type) && c.securityContext.seccompProfile.type != null && c.securityContext.seccompProfile.type in ["RuntimeDefault", "Localhost"]))
+  podContainers(resource).all(c,
+    (has(c.securityContext) && c.securityContext != null && has(c.securityContext.seccompProfile) && c.securityContext.seccompProfile != null && has(c.securityContext.seccompProfile.type) && c.securityContext.seccompProfile.type != null && c.securityContext.seccompProfile.type in ["RuntimeDefault", "Localhost"]) ||
+    (!(has(c.securityContext) && c.securityContext != null && has(c.securityContext.seccompProfile) && c.securityContext.seccompProfile != null && has(c.securityContext.seccompProfile.type) && c.securityContext.seccompProfile.type != null) &&
+      has(podSpec(resource).securityContext) && podSpec(resource).securityContext != null && has(podSpec(resource).securityContext.seccompProfile) && podSpec(resource).securityContext.seccompProfile != null && has(podSpec(resource).securityContext.seccompProfile.type) && podSpec(resource).securityContext.seccompProfile.type != null && podSpec(resource).securityContext.seccompProfile.type in ["RuntimeDefault", "Localhost"]))
 message: "{{ .kind }}/{{ .name }} does not set a RuntimeDefault or Localhost seccomp profile for the pod or every container"

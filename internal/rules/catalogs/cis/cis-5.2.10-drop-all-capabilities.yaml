@@ -13,5 +13,5 @@ match:
     - Job
     - CronJob
 expression: |
-  podContainers(resource).all(c, (has(c.securityContext) && c.securityContext != null && has(c.securityContext.capabilities) && c.securityContext.capabilities != null && has(c.securityContext.capabilities.drop) && c.securityContext.capabilities.drop != null && c.securityContext.capabilities.drop .exists(x, x == "ALL")))
+  podContainers(resource).all(c, (has(c.securityContext) && c.securityContext != null && has(c.securityContext.capabilities) && c.securityContext.capabilities != null && has(c.securityContext.capabilities.drop) && c.securityContext.capabilities.drop != null && c.securityContext.capabilities.drop.exists(x, x == "ALL")))
 message: "{{ .kind }}/{{ .name }} has a container that does not drop ALL capabilities"

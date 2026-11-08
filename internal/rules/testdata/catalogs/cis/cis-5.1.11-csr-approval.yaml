@@ -240,3 +240,32 @@ metadata:
   namespace: "prod"
   labels:
     glint.test/expect: "compliant"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "any-approval-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "*/approval"
+    verbs:
+      - "update"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "any-approval-clusterrole"
+  labels:
+    glint.test/expect: "violation"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "*/approval"
+    verbs:
+      - "update"
