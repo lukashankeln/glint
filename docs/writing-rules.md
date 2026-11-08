@@ -272,6 +272,8 @@ These are not CEL functions. Before compilation, glint rewrites `hasLabel("key")
 | `inList` | `inList(value string, list list) bool` | True if value appears in list |
 | `matchesGlob` | `matchesGlob(str string, pattern string) bool` | Doublestar glob match |
 | `semverLT` | `semverLT(a string, b string) bool` | True if semver `a` is less than `b` |
+| `podSpec` | `podSpec(resource) map` | Pod spec of a workload: `spec.jobTemplate.spec.template.spec` (CronJob), else `spec.template.spec` (Deployment etc.), else `spec` when it has a `containers` key (Pod), else `{}`. Null, absent or wrong-typed intermediate values fall through; it never errors. |
+| `podContainers` | `podContainers(resource) list` | `containers`, `initContainers` and `ephemeralContainers` of `podSpec(resource)` concatenated in that order. Fields that are absent, null or not a list are skipped; list elements are returned as-is. |
 
 Standard CEL built-ins (`has()`, `size()`, `.all()`, `.exists()`, `.filter()`, `string()`, `int()`, etc.) are all available.
 
@@ -332,6 +334,24 @@ The path to the containers depends on the kind:
 | `CronJob` | `resource.spec.jobTemplate.spec.template.spec.containers` |
 
 An expression that reads `resource.spec.template...` fails with an evaluation error on a `Pod` or `CronJob`. Either restrict `match.kinds` to kinds that share the path you read (most examples below do), or handle the shapes with `has()`, as the built-in `no-latest-tag` rule does.
+
+`podSpec` and `podContainers` hide these shapes, so one expression works for every workload kind, and also covers init and ephemeral containers. Both return empty results rather than erroring, but you still need `has()` for fields inside a container:
+
+```yaml
+id: no-host-network-or-privileged
+description: "Workloads must not use the host network or run privileged containers"
+severity: error
+match:
+  kinds: [Pod, Deployment, StatefulSet, DaemonSet, ReplicaSet, Job, CronJob]
+expression: |
+  !(has(podSpec(resource).hostNetwork) && podSpec(resource).hostNetwork == true) &&
+  podContainers(resource).all(c,
+    !(has(c.securityContext) && has(c.securityContext.privileged) &&
+      c.securityContext.privileged == true))
+message: "{{ .kind }}/{{ .name }} uses the host network or a privileged container"
+```
+
+The [rule catalogs](rule-catalogs.md) are written this way; their rule files in `internal/rules/catalogs/` (for example `cis/cis-5.2.7-root-containers.yaml`) are further examples.
 
 ### No `:latest` image tag
 

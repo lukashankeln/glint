@@ -48,6 +48,11 @@ rules:
   # rule_files:
   #   - "glint-rules/*.yaml"
 
+  # Opt-in predefined rule catalogs (see docs/rule-catalogs.md):
+  # catalogs:
+  #   cis:
+  #     enabled: true
+
 output:
   format: text
   color: auto
