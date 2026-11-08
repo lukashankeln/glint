@@ -224,21 +224,23 @@ rules:
 
 Each file contains a `rules:` list of rule definitions (or a single rule) using the same schema as `custom` above. A rule file that fails to parse is reported as an error rather than skipped.
 
-### Rule catalogs
+### CIS rules
 
-Opt in to predefined rule sets that ship with glint:
+The CIS Kubernetes Benchmark rules are built-in rules of category `cis`, disabled by default. Enable them as a group, or configure single rules by ID under `rules.built_in`:
 
 ```yaml
 rules:
   catalogs:
     cis:                    # CIS Kubernetes Benchmark v1.10, section 5
-      enabled: true         # default: false
-      severity: warning     # optional: override the severity of every rule in the catalog
-      exclude_rules:        # optional: catalog rule IDs to disable
-        - cis-5.7.3-security-context
+      enabled: true         # default: false; shorthand for enabling all rules of the category
+      severity: warning     # optional: default severity for the whole category
+  built_in:
+    cis-5.7.3-security-context:   # per-rule setting; key is the rule ID, "-" and "_" are interchangeable
+      enabled: false
+      severity: info
 ```
 
-Catalogs are disabled unless `enabled: true`. An invalid `severity` is rejected when the config is loaded. An unknown catalog name or an unknown `exclude_rules` ID (even with `enabled: false`) is rejected when the rule engine starts (`glint lint`, `glint rules list`); `glint render` and `glint discover` do not check them. See [`docs/rule-catalogs.md`](rule-catalogs.md) for the rule list, replacing a rule and limitations.
+Precedence: `rules.built_in.<rule-id>` > `rules.catalogs.<category>` > the rule's own default. Per-rule entries accept `enabled` and `severity` only (no `params`). An invalid `severity` is rejected when the config is loaded. An unknown category name, an unknown `rules.built_in` key, a hyphenated alias of `no_latest_tag`, `resource_requests` or `deprecated_apis`, or two keys for the same rule are rejected when the rule engine starts (`glint lint`, `glint rules list`); `glint render` and `glint discover` do not check them. `exclude_rules` no longer exists; use `enabled: false` (a leftover `exclude_rules` is silently ignored). See [`docs/rule-catalogs.md`](rule-catalogs.md) for the rule list, replacing a rule and limitations.
 
 ### Exceptions
 
@@ -353,7 +355,6 @@ rules:
   catalogs:
     cis:
       enabled: false      # opt in to the CIS Kubernetes Benchmark rules
-      exclude_rules: []
 
   exceptions:
     - rule: resource-requests

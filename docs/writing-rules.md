@@ -351,7 +351,7 @@ expression: |
 message: "{{ .kind }}/{{ .name }} uses the host network or a privileged container"
 ```
 
-The [rule catalogs](rule-catalogs.md) are written this way; their rule files in `internal/rules/catalogs/` (for example `cis/cis-5.2.7-root-containers.yaml`) are further examples.
+The [built-in CIS rules](rule-catalogs.md) are written this way; their rule files in `internal/rules/builtin/cis/` (for example `cis-5.2.7-root-containers.yaml`) are further examples.
 
 ### No `:latest` image tag
 

@@ -27,7 +27,7 @@ glint init [path]
   --framework string     argocd | flux | plain (default: auto-detect)
 ```
 
-`glint rules list` prints one row per rule. SOURCE can be `catalog:<name>` for [catalog rules](rule-catalogs.md); catalog rules named in `exclude_rules` show `ENABLED` `no`, and rules of a disabled catalog are not listed.
+`glint rules list` prints one row per rule. SOURCE can be `built-in:<category>` for [built-in category rules](rule-catalogs.md) such as the CIS rules. Disabled rules, including CIS rules that are not enabled (the default) or are set to `enabled: false` under `rules.built_in`, are listed with `ENABLED` `no`.
 
 `--only-rules` and `--skip-rules` filter the reported findings after all rules are evaluated; they do not change which rules run.
 

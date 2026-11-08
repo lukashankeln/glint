@@ -159,9 +159,9 @@ See [`docs/writing-rules.md`](docs/writing-rules.md) for a full guide with examp
 
 ---
 
-## Rule catalogs
+## CIS rules
 
-Predefined rule sets are opt-in. Enable the CIS Kubernetes Benchmark v1.10 (section 5) rules with:
+The CIS rules are built-in rules that are off by default. Enable the CIS Kubernetes Benchmark v1.10 (section 5) rules with:
 
 ```yaml
 rules:
@@ -170,7 +170,7 @@ rules:
       enabled: true
 ```
 
-See [`docs/rule-catalogs.md`](docs/rule-catalogs.md) for the rule list, severity overrides, exclusions and limitations.
+See [`docs/rule-catalogs.md`](docs/rule-catalogs.md) for the rule list, per-rule overrides and limitations.
 
 ---
 
@@ -202,7 +202,7 @@ See [`docs/README.md`](docs/README.md) for the index.
 
 - [Configuration](docs/configuration.md)
 - [Writing custom rules](docs/writing-rules.md)
-- [Rule catalogs (CIS)](docs/rule-catalogs.md)
+- [Built-in CIS rules](docs/rule-catalogs.md)
 - [Plugins](docs/plugins.md)
 - [CLI reference and output formats](docs/cli.md)
 - [GitHub Actions and pre-commit](docs/ci.md)
