@@ -13,5 +13,5 @@ match:
     - Job
     - CronJob
 expression: |
-  podContainers(resource).all(c, !(has(c.securityContext) && c.securityContext != null && has(c.securityContext.capabilities) && c.securityContext.capabilities != null && has(c.securityContext.capabilities.add) && c.securityContext.capabilities.add != null && c.securityContext.capabilities.add .size() > 0))
+  podContainers(resource).all(c, !(has(c.securityContext) && c.securityContext != null && has(c.securityContext.capabilities) && c.securityContext.capabilities != null && has(c.securityContext.capabilities.add) && c.securityContext.capabilities.add != null && c.securityContext.capabilities.add.size() > 0))
 message: "{{ .kind }}/{{ .name }} has a container with added capabilities"

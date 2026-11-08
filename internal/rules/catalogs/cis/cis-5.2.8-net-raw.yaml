@@ -13,6 +13,6 @@ match:
     - Job
     - CronJob
 expression: |
-  podContainers(resource).all(c, !(has(c.securityContext) && c.securityContext != null && has(c.securityContext.capabilities) && c.securityContext.capabilities != null && has(c.securityContext.capabilities.add) && c.securityContext.capabilities.add != null && c.securityContext.capabilities.add .exists(x, x == "NET_RAW")) &&
-      (has(c.securityContext) && c.securityContext != null && has(c.securityContext.capabilities) && c.securityContext.capabilities != null && has(c.securityContext.capabilities.drop) && c.securityContext.capabilities.drop != null && c.securityContext.capabilities.drop .exists(x, x == "NET_RAW" || x == "ALL")))
+  podContainers(resource).all(c, !(has(c.securityContext) && c.securityContext != null && has(c.securityContext.capabilities) && c.securityContext.capabilities != null && has(c.securityContext.capabilities.add) && c.securityContext.capabilities.add != null && c.securityContext.capabilities.add.exists(x, x == "NET_RAW")) &&
+      (has(c.securityContext) && c.securityContext != null && has(c.securityContext.capabilities) && c.securityContext.capabilities != null && has(c.securityContext.capabilities.drop) && c.securityContext.capabilities.drop != null && c.securityContext.capabilities.drop.exists(x, x == "NET_RAW" || x == "ALL")))
 message: "{{ .kind }}/{{ .name }} has a container that does not drop NET_RAW (or ALL) or that adds NET_RAW"

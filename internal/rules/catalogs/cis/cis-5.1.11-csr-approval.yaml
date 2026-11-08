@@ -9,6 +9,6 @@ match:
 expression: |
   !((has(resource.rules) && resource.rules != null) &&
     resource.rules.exists(r, r != null &&
-      ((has(r.resources) && r.resources != null) && ["certificatesigningrequests/approval", "*"].exists(x, x in r.resources)) &&
+      ((has(r.resources) && r.resources != null) && ["certificatesigningrequests/approval", "*/approval", "*"].exists(x, x in r.resources)) &&
       ((has(r.verbs) && r.verbs != null) && ["update", "patch", "*"].exists(x, x in r.verbs))))
 message: "{{ .kind }}/{{ .name }} grants access to the certificatesigningrequests/approval sub-resource"
