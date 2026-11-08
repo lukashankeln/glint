@@ -32,8 +32,8 @@ func TestRulesList_ColumnsAlignWithLongID(t *testing.T) {
 	col := strings.Index(lines[0], "SEVERITY")
 	assert.Equal(t, len(longID)+2, col)
 	for _, l := range lines[2:] {
-		assert.Equal(t, col, strings.Index(l[col:], l[col:])+col)
-		assert.True(t, len(l) > col)
+		require.Greater(t, len(l), col)
+		assert.True(t, strings.HasPrefix(l[col:], "error") || strings.HasPrefix(l[col:], "warning") || strings.HasPrefix(l[col:], "info"), "row %q: SEVERITY column does not start with a severity", l)
 		assert.Equal(t, byte(' '), l[col-1])
 	}
 }

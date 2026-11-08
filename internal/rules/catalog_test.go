@@ -1,6 +1,8 @@
 package rules
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -121,4 +123,31 @@ func TestEngine_CatalogCollisionWithCustom(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "collides with rule from glint.yaml")
 	assert.Contains(t, err.Error(), "catalog:cis")
+}
+
+func TestEngine_ExcludedCatalogRuleCanBeReplaced(t *testing.T) {
+	cfg := catalogCfg(config.CatalogConfig{Enabled: true, ExcludeRules: []string{cisDefaultNS}})
+	cfg.Custom = []config.CustomRuleDef{{ID: cisDefaultNS, Expression: "false", Message: "custom fired"}}
+	engine, err := NewEngine(cfg)
+	require.NoError(t, err)
+
+	vs := engine.Evaluate([]manifest.Manifest{makeManifest("v1", "ConfigMap", "cm", "prod", nil)})
+	var msgs []string
+	for _, v := range vs {
+		if v.RuleID == cisDefaultNS {
+			msgs = append(msgs, v.Message)
+		}
+	}
+	assert.Equal(t, []string{"custom fired"}, msgs)
+}
+
+func TestEngine_CatalogCollisionWithRuleFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rule.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("id: "+cisDefaultNS+"\nexpression: \"true\"\nmessage: m\n"), 0o644))
+	cfg := catalogCfg(config.CatalogConfig{Enabled: true})
+	cfg.RuleFiles = []string{path}
+	_, err := NewEngine(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "loading rule catalogs:")
+	assert.Contains(t, err.Error(), "collides with rule from "+path)
 }

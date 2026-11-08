@@ -74,7 +74,7 @@ func NewEngine(cfg config.RulesConfig) (*Engine, error) {
 	}
 
 	if err := checkCatalogCollisions(defs); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("loading rule catalogs: %w", err)
 	}
 
 	compiled := make([]CompiledRule, 0, len(defs))
@@ -256,7 +256,8 @@ func renderMessage(tmpl *template.Template, fallback string, severity Severity, 
 }
 
 // checkCatalogCollisions rejects a catalog rule whose ID equals the ID of any
-// non-catalog rule. Duplicates among non-catalog rules are not checked here.
+// non-catalog rule. Catalog rules that are disabled (excluded via
+// exclude_rules) are skipped so users can replace them. Duplicates among non-catalog rules are not checked here.
 func checkCatalogCollisions(defs []RuleDef) error {
 	isCatalog := func(d RuleDef) bool { return strings.HasPrefix(d.Source, "catalog:") }
 	others := map[string]string{}
@@ -266,7 +267,7 @@ func checkCatalogCollisions(defs []RuleDef) error {
 		}
 	}
 	for _, d := range defs {
-		if isCatalog(d) {
+		if isCatalog(d) && d.Enabled {
 			if src, ok := others[d.ID]; ok {
 				return fmt.Errorf("rule ID %q from %s collides with rule from %s", d.ID, d.Source, src)
 			}
