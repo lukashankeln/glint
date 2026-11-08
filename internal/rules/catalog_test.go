@@ -131,7 +131,8 @@ func TestEngine_ExcludedCatalogRuleCanBeReplaced(t *testing.T) {
 	engine, err := NewEngine(cfg)
 	require.NoError(t, err)
 
-	vs := engine.Evaluate([]manifest.Manifest{makeManifest("v1", "ConfigMap", "cm", "prod", nil)})
+	// Namespace "default" would trip the excluded catalog rule if it were evaluated.
+	vs := engine.Evaluate([]manifest.Manifest{makeManifest("v1", "ConfigMap", "cm", "default", nil)})
 	var msgs []string
 	for _, v := range vs {
 		if v.RuleID == cisDefaultNS {
