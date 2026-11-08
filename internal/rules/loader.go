@@ -224,7 +224,9 @@ func LoadBuiltIns(cfg config.RulesConfig) ([]RuleDef, error) {
 		return nil, err
 	}
 
-	var rules []RuleDef
+	// Top-level built-ins come first so `glint rules list` is not led by
+	// (usually disabled) category rules.
+	var rules, categoryRules []RuleDef
 	for _, e := range entries {
 		def := e.def
 		if e.category != "" {
@@ -245,9 +247,13 @@ func LoadBuiltIns(cfg config.RulesConfig) ([]RuleDef, error) {
 		// Pre-process expression: expand hasLabel/hasAnnotation macros.
 		def.Expression = preprocessExpression(def.Expression)
 
-		rules = append(rules, def)
+		if e.category != "" {
+			categoryRules = append(categoryRules, def)
+		} else {
+			rules = append(rules, def)
+		}
 	}
-	return rules, nil
+	return append(rules, categoryRules...), nil
 }
 
 // LoadRuleFiles reads external rule YAML files matched by glob patterns.

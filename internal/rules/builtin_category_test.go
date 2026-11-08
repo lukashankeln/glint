@@ -225,3 +225,17 @@ func TestEngine_CISCollisionWithRuleFile(t *testing.T) {
 	assert.Contains(t, err.Error(), "loading built-in rules:")
 	assert.Contains(t, err.Error(), "collides with rule from "+path)
 }
+
+func TestLoadBuiltIns_TopLevelBeforeCategoryRules(t *testing.T) {
+	defs, err := LoadBuiltIns(defaultRulesCfg())
+	require.NoError(t, err)
+	seenCategory := false
+	for _, d := range defs {
+		if d.Source == "built-in:cis" {
+			seenCategory = true
+			continue
+		}
+		assert.False(t, seenCategory, "top-level built-in %q listed after a category rule", d.ID)
+	}
+	assert.True(t, seenCategory)
+}
