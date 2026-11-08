@@ -1,59 +1,81 @@
-# Rule catalogs
+# Built-in CIS rules
 
-A rule catalog is a predefined set of rules that ships with glint and is **opt-in**: nothing is evaluated until you enable the catalog in `glint.yaml`. Catalog rules use the same schema and engine as [custom rules](writing-rules.md), and you can read them as examples. They live in `internal/rules/catalogs/`.
+glint ships the CIS Kubernetes Benchmark rules as built-in rules of category `cis`. They are **disabled by default**: nothing is evaluated until you enable them in `glint.yaml`. They use the same schema and engine as [custom rules](writing-rules.md), and you can read them as examples. They live in `internal/rules/builtin/cis/`.
 
-Currently available catalogs:
+Currently available categories:
 
-| Catalog | Description |
-|---------|-------------|
+| Category | Description |
+|----------|-------------|
 | `cis` | CIS Kubernetes Benchmark v1.10, section 5 (Policies); see [CIS](#cis-kubernetes-benchmark-v110) |
 
 ---
 
-## Enabling a catalog
+## Enabling the rules
+
+Enable every `cis` rule with the category shorthand `rules.catalogs.<category>`, or address single rules under `rules.built_in.<rule-id>`:
 
 ```yaml
 rules:
   catalogs:
     cis:
-      enabled: true
-      severity: warning          # optional: override the severity of every rule in the catalog
-      exclude_rules:             # optional: catalog rule IDs to turn off
-        - cis-5.7.3-security-context
-        - cis-5.1.6-service-account-token-mount
+      enabled: true              # shorthand: enable all built-in rules of category cis
+      severity: warning          # optional: default severity for the whole category
+  built_in:
+    cis-5.7.3-security-context:  # per-rule setting, key is the rule ID
+      enabled: false
+    cis-5.2.2-privileged-containers:
+      severity: error
 ```
+
+`rules.catalogs.<category>`:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `enabled` | bool | `false` | Load the catalog's rules |
-| `severity` | string | — | `error`, `warning` or `info` (case-insensitive). Replaces the default severity of every rule in the catalog; empty keeps each rule's own severity |
-| `exclude_rules` | []string | — | IDs of catalog rules to disable |
+| `enabled` | bool | `false` | Enable all built-in rules of the category |
+| `severity` | string | — | `error`, `warning` or `info` (case-insensitive). Default severity for every rule in the category; empty keeps each rule's own severity |
 
-Catalog rules are reported like any other rule, with the rule ID in brackets, and count towards `fail_on`. CIS rules have mixed default severities (`error`, `warning`, `info`); with the default `fail_on: [error]` only the error-severity ones (5.1.7, 5.2.2, 5.2.3, 5.2.4, 5.2.5, 5.2.11, 5.2.12) fail the run. Use `severity` or `fail_on` to tighten or loosen that.
+`rules.built_in.<rule-id>`:
 
-Validation happens in two places:
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | category setting | `true` enables the rule, `false` disables it, even when the category is enabled |
+| `severity` | string | — | `error`, `warning` or `info` (case-insensitive) |
 
-- An unknown catalog name is an error that lists the available catalogs. It is rejected when the rule engine starts (`glint lint`, `glint rules list`); `glint render` and `glint discover` do not check it.
-- An unknown ID in `exclude_rules` is an error, rejected at the same point. It is checked even when `enabled: false`.
-- An invalid `severity` is rejected when the config is loaded.
-- A disabled catalog loads nothing, and its rules do not appear in `glint rules list`.
+The key is the rule ID, and `-` and `_` are interchangeable (`cis-5.7.4-default-namespace` and `cis_5.7.4_default_namespace` address the same rule). Use one spelling per rule. `params` is not supported for these rules and is ignored.
 
-> `glint.yaml` is parsed without strict key checking, so a misspelt key is silently ignored. A misspelt `catalogs:` (for example `catalog:`) means no catalog rule runs. A misplaced `exclude_rules` (for example directly under `rules`) or a misspelt one (for example `exclude_rule:`) is ignored too, so the rules you meant to exclude still run. Check with `glint rules list` that the rules you expect are present and that excluded ones show `ENABLED` `no`.
+Precedence: the per-rule setting under `rules.built_in` wins over `rules.catalogs.<category>`, which wins over the rule file's own default. A rule enabled under `rules.built_in` runs even without `rules.catalogs`.
+
+CIS rules are reported like any other rule, with the rule ID in brackets, and count towards `fail_on`. They have mixed default severities (`error`, `warning`, `info`); with the default `fail_on: [error]` only the error-severity ones (5.1.7, 5.2.2, 5.2.3, 5.2.4, 5.2.5, 5.2.11, 5.2.12) fail the run. Use `severity` or `fail_on` to tighten or loosen that.
+
+Validation:
+
+- An invalid `severity` (under `rules.built_in.<rule-id>` or `rules.catalogs.<category>`) is rejected when the config is loaded.
+- These are errors when the rule engine starts (`glint lint`, `glint rules list`); `glint render` and `glint discover` do not check them:
+  - an unknown category name under `rules.catalogs`; the error lists the available categories
+  - an unknown key under `rules.built_in`
+  - a hyphenated alias of a named built-in, for example `no-latest-tag` (use `no_latest_tag`)
+  - two keys for the same rule, for example both spellings of one rule ID
+- They are checked even when `enabled: false`.
+- Disabled CIS rules still appear in `glint rules list` with `ENABLED` set to `no`.
+
+> `exclude_rules` was removed. Disable a rule with `rules.built_in.<rule-id>.enabled: false` instead. `glint.yaml` is parsed without strict key checking, so a leftover `exclude_rules` (or any misspelt key, for example `catalog:` instead of `catalogs:`) is silently ignored: the rules you meant to exclude still run, and a misspelt `catalogs:` means no CIS rule is enabled. Check with `glint rules list` that the rules you expect are enabled and the ones you disabled show `ENABLED` `no`.
 
 ---
 
-## Excluding and replacing rules
+## Disabling and replacing rules
 
-`exclude_rules` disables a rule for the whole run. Excluded rules still show up in `glint rules list` with `ENABLED` set to `no`, so the exclusion is visible.
+`rules.built_in.<rule-id>.enabled: false` disables a rule for the whole run. It still shows up in `glint rules list` with `ENABLED` set to `no`, so the exclusion is visible.
 
-To replace a catalog rule with your own version, exclude it and define a rule with the same ID under `custom` or in a rule file:
+To replace a CIS rule with your own version, disable it and define a rule with the same ID under `custom` or in a rule file:
 
 ```yaml
 rules:
   catalogs:
     cis:
       enabled: true
-      exclude_rules: [cis-5.7.4-default-namespace]
+  built_in:
+    cis-5.7.4-default-namespace:
+      enabled: false
   custom:
     - id: cis-5.7.4-default-namespace
       description: "Our variant: also flag a missing namespace"
@@ -64,22 +86,22 @@ rules:
       message: "{{ .kind }}/{{ .name }} must set a namespace other than default"
 ```
 
-An **enabled** catalog rule whose ID equals that of a built-in, inline custom or rule-file rule is a startup error (`loading rule catalogs: ...`). Excluded catalog rules do not collide.
+An **enabled** CIS rule whose ID equals that of an inline custom or rule-file rule is a startup error (`loading built-in rules: rule ID ... collides with rule from ...`). Disabled CIS rules do not collide.
 
 ---
 
 ## Interaction with other features
 
-- **Exceptions** are keyed by rule ID, so `rules.exceptions` works with catalog rules like any other (`rule: cis-5.2.2-privileged-containers`). With the catalog disabled, an exception that names a `cis-*` rule logs `exception references unknown rule ID`.
-- **`--only-rules` / `--skip-rules`** filter by rule ID, for example `glint lint --skip-rules cis-5.7.3-security-context`. `--only-rules` restricts the reported findings to the listed IDs, including catalog ones. Both filter the findings after all rules have been evaluated; they do not change which rules run.
-- **`glint rules list`** shows catalog rules with the source `catalog:cis`.
-- **Evaluation errors** from a catalog rule are reported at `error` severity regardless of the rule's own severity (see [`on_eval_error`](writing-rules.md#evaluation-errors-and-on_eval_error)). The catalog rules are written to avoid them; one that still occurs is a rule bug worth reporting.
+- **Exceptions** are keyed by rule ID, so `rules.exceptions` works with CIS rules like any other (`rule: cis-5.2.2-privileged-containers`). Disabled CIS rules are still loaded, so an exception that names one does not log `exception references unknown rule ID`; it has no effect until the rule is enabled.
+- **`--only-rules` / `--skip-rules`** filter by rule ID, for example `glint lint --skip-rules cis-5.7.3-security-context`. `--only-rules` restricts the reported findings to the listed IDs, including CIS ones. Both filter the findings after all rules have been evaluated; they do not change which rules run.
+- **`glint rules list`** shows CIS rules with the source `built-in:cis`.
+- **Evaluation errors** from a CIS rule are reported at `error` severity regardless of the rule's own severity (see [`on_eval_error`](writing-rules.md#evaluation-errors-and-on_eval_error)). The CIS rules are written to avoid them; one that still occurs is a rule bug worth reporting.
 
 ---
 
 ## CIS Kubernetes Benchmark v1.10
 
-The `cis` catalog is pinned to **CIS Kubernetes Benchmark v1.10, section 5 (Policies)**. It checks the manifests glint renders, so it covers the controls that can be decided from a single resource.
+The `cis` category is pinned to **CIS Kubernetes Benchmark v1.10, section 5 (Policies)**. It checks the manifests glint renders, so it covers the controls that can be decided from a single resource.
 
 Rule IDs follow `cis-<control>-<slug>`. The workload kinds are `Pod`, `Deployment`, `StatefulSet`, `DaemonSet`, `ReplicaSet`, `ReplicationController`, `Job` and `CronJob`; pod templates are resolved with [`podSpec` and `podContainers`](writing-rules.md#custom-functions), so every workload shape is handled and init and ephemeral containers are included.
 
@@ -161,7 +183,7 @@ These controls are not implemented, because they cannot be decided from a single
 ### Limitations
 
 - **RBAC rules ignore `apiGroups`.** 5.1.2, 5.1.4, 5.1.9 to 5.1.13 match on `resources` and `verbs` only, and 5.1.8 checks `verbs` only (ignoring `resources` too). Only 5.1.3 reads `apiGroups`. A rule for `secrets` in an unrelated API group is reported too, so they can over-report but not under-report.
-- **5.7.4 only catches an explicit `namespace: default`.** A manifest without `metadata.namespace` is not flagged, because glint cannot know the namespace it will be applied to (for example through `kubectl -n` or an ArgoCD destination namespace). When glint renders a Helm chart and the app has no namespace (ArgoCD `destination.namespace`, Flux `targetNamespace` or the HelmRelease namespace, or `discovery.overrides[].helm.namespace`), the release namespace defaults to `default`, so charts that template `.Release.Namespace` are flagged; set the namespace or exclude the rule.
-- **Evaluation errors are reported at `error` severity** regardless of the rule's own severity, because every catalog rule sets `on_eval_error: error` (a rule with `on_eval_error: warning` logs and skips instead).
-- **Null entries in container lists are handled inconsistently.** `podContainers` returns list elements as-is, so a `null` entry in `containers` is not skipped; in testing no catalog rule raised an evaluation error on it: some rules pass it, others flag it as a container without settings. The API server rejects such manifests anyway.
-- **glint checks manifests, not live cluster state.** The catalog does not replace [kube-bench](https://github.com/aquasecurity/kube-bench) and complements it: kube-bench audits nodes and the control plane, glint audits what you are about to deploy.
+- **5.7.4 only catches an explicit `namespace: default`.** A manifest without `metadata.namespace` is not flagged, because glint cannot know the namespace it will be applied to (for example through `kubectl -n` or an ArgoCD destination namespace). When glint renders a Helm chart and the app has no namespace (ArgoCD `destination.namespace`, Flux `targetNamespace` or the HelmRelease namespace, or `discovery.overrides[].helm.namespace`), the release namespace defaults to `default`, so charts that template `.Release.Namespace` are flagged; set the namespace or disable the rule.
+- **Evaluation errors are reported at `error` severity** regardless of the rule's own severity, because every CIS rule sets `on_eval_error: error` (a rule with `on_eval_error: warning` logs and skips instead).
+- **Null entries in container lists are handled inconsistently.** `podContainers` returns list elements as-is, so a `null` entry in `containers` is not skipped; in testing no CIS rule raised an evaluation error on it: some rules pass it, others flag it as a container without settings. The API server rejects such manifests anyway.
+- **glint checks manifests, not live cluster state.** The CIS rules do not replace [kube-bench](https://github.com/aquasecurity/kube-bench) and complements it: kube-bench audits nodes and the control plane, glint audits what you are about to deploy.
