@@ -561,3 +561,48 @@ spec:
       securityContext:
         seccompProfile:
           type: "RuntimeDefault"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "container-null-falls-back-to-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  securityContext:
+    seccompProfile:
+      type: "RuntimeDefault"
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      securityContext:
+        seccompProfile: null
+  initContainers:
+    - name: "init"
+      image: "busybox:1.36"
+      securityContext:
+        seccompProfile:
+          type: "Localhost"
+          localhostProfile: "profiles/audit.json"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "init-container-override"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  securityContext:
+    seccompProfile:
+      type: "RuntimeDefault"
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+  initContainers:
+    - name: "init"
+      image: "busybox:1.36"
+      securityContext:
+        seccompProfile:
+          type: "Unconfined"
