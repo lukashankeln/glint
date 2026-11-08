@@ -9,7 +9,7 @@ glint lint [path...] [flags]
   --output-sarif string  write SARIF report to file
   --output-junit string  write JUnit report to file
   --output-json string   write JSON summary to file (for CI step capture)
-  --only-rules string    run only these rule IDs
+  --only-rules string    report only findings from these rule IDs
   --skip-rules string    skip these rule IDs
 
 glint discover [path...]
