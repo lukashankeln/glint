@@ -342,7 +342,7 @@ id: no-host-network-or-privileged
 description: "Workloads must not use the host network or run privileged containers"
 severity: error
 match:
-  kinds: [Pod, Deployment, StatefulSet, DaemonSet, ReplicaSet, Job, CronJob]
+  kinds: [Pod, Deployment, StatefulSet, DaemonSet, ReplicaSet, ReplicationController, Job, CronJob]
 expression: |
   !(has(podSpec(resource).hostNetwork) && podSpec(resource).hostNetwork == true) &&
   podContainers(resource).all(c,
