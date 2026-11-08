@@ -177,6 +177,16 @@ func TestPodSpecAndContainers(t *testing.T) {
 			"containers": nil, "initContainers": []any{ctr("i")}}}, nameList("i")},
 		{"containers wrong type", names, map[string]any{"spec": map[string]any{
 			"containers": "x", "initContainers": []any{ctr("i")}}}, nameList("i")},
+		{"template spec null falls to spec.containers", names, map[string]any{"spec": map[string]any{
+			"template": map[string]any{"spec": nil}, "containers": []any{ctr("s")}}}, nameList("s")},
+		{"jobTemplate non-map spec falls to template", names, map[string]any{"spec": map[string]any{
+			"jobTemplate": map[string]any{"spec": "x"},
+			"template":    map[string]any{"spec": map[string]any{"containers": []any{ctr("t")}}}}}, nameList("t")},
+		{"cronjob all lists in order", names, map[string]any{"spec": map[string]any{"jobTemplate": map[string]any{
+			"spec": map[string]any{"template": map[string]any{"spec": map[string]any{
+				"ephemeralContainers": []any{ctr("e")},
+				"initContainers":      []any{ctr("i")},
+				"containers":          []any{ctr("a")}}}}}}}, nameList("a", "i", "e")},
 		{"all lists in order", names, map[string]any{"spec": map[string]any{
 			"ephemeralContainers": []any{ctr("e")},
 			"initContainers":      []any{ctr("i")},

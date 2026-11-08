@@ -112,7 +112,8 @@ func PodSpecOption() cel.EnvOption {
 
 // PodContainersOption registers podContainers(dyn) list<dyn>.
 // Concatenates the containers, initContainers and ephemeralContainers lists of
-// podSpec(resource), in that order, skipping absent, null or non-list entries.
+// podSpec(resource), in that order, skipping container fields that are absent, null or not a list. Elements
+// inside a list are returned as-is.
 func PodContainersOption() cel.EnvOption {
 	return cel.Function("podContainers",
 		cel.Overload("podContainers_dyn",
