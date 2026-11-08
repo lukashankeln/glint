@@ -3,6 +3,7 @@ package cel
 import (
 	"testing"
 
+	"cel.dev/cel-go/common/types/ref"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -116,5 +117,87 @@ func baseVars() map[string]any {
 		"annotations": map[string]string{},
 		"kind":        "",
 		"apiVersion":  "",
+	}
+}
+
+func TestPodSpecAndContainers(t *testing.T) {
+	env, err := NewEnv()
+	if err != nil {
+		t.Fatalf("NewEnv: %v", err)
+	}
+	eval := func(t *testing.T, expr string, res map[string]any) any {
+		t.Helper()
+		ast, iss := env.Compile(expr)
+		if iss != nil && iss.Err() != nil {
+			t.Fatalf("compile %q: %v", expr, iss.Err())
+		}
+		prog, err := env.Program(ast)
+		if err != nil {
+			t.Fatalf("program: %v", err)
+		}
+		vars := baseVars()
+		vars["resource"] = res
+		out, _, err := prog.Eval(vars)
+		if err != nil {
+			t.Fatalf("eval %q: %v", expr, err)
+		}
+		return out.Value()
+	}
+	ctr := func(n string) map[string]any { return map[string]any{"name": n} }
+	names := `podContainers(resource).map(c, c.name)`
+	nameList := func(ns ...any) []any { return ns }
+
+	pod := map[string]any{"kind": "Pod", "spec": map[string]any{
+		"hostPID": true, "containers": []any{ctr("a")}}}
+	deploy := map[string]any{"spec": map[string]any{"template": map[string]any{
+		"spec": map[string]any{"containers": []any{ctr("d")}}}}}
+	cron := map[string]any{"spec": map[string]any{"jobTemplate": map[string]any{
+		"spec": map[string]any{"template": map[string]any{
+			"spec": map[string]any{"containers": []any{ctr("c")}}}}}}}
+
+	tests := []struct {
+		name string
+		expr string
+		res  map[string]any
+		want any
+	}{
+		{"pod", names, pod, nameList("a")},
+		{"pod hostPID", `has(podSpec(resource).hostPID) && podSpec(resource).hostPID == true`, pod, true},
+		{"deployment", names, deploy, nameList("d")},
+		{"cronjob", names, cron, nameList("c")},
+		{"deployment no hostPID", `has(podSpec(resource).hostPID)`, deploy, false},
+		{"configmap no spec", `size(podSpec(resource)) == 0 && size(podContainers(resource)) == 0`, map[string]any{"data": map[string]any{"a": "b"}}, true},
+		{"spec without containers", `size(podSpec(resource)) == 0 && size(podContainers(resource)) == 0`, map[string]any{"spec": map[string]any{"replicas": 1.0}}, true},
+		{"spec null", `size(podSpec(resource)) == 0 && size(podContainers(resource)) == 0`, map[string]any{"spec": nil}, true},
+		{"template null", `size(podContainers(resource)) == 0`, map[string]any{"spec": map[string]any{"template": nil}}, true},
+		{"template wrong type", `size(podContainers(resource)) == 0`, map[string]any{"spec": map[string]any{"template": "x"}}, true},
+		{"jobTemplate null falls to template", names, map[string]any{"spec": map[string]any{
+			"jobTemplate": nil, "template": map[string]any{"spec": map[string]any{"containers": []any{ctr("t")}}}}}, nameList("t")},
+		{"containers null", names, map[string]any{"spec": map[string]any{
+			"containers": nil, "initContainers": []any{ctr("i")}}}, nameList("i")},
+		{"containers wrong type", names, map[string]any{"spec": map[string]any{
+			"containers": "x", "initContainers": []any{ctr("i")}}}, nameList("i")},
+		{"all lists in order", names, map[string]any{"spec": map[string]any{
+			"ephemeralContainers": []any{ctr("e")},
+			"initContainers":      []any{ctr("i")},
+			"containers":          []any{ctr("a"), ctr("b")}}}, nameList("a", "b", "i", "e")},
+		{"map literal containers", `podContainers({"spec": {"containers": [{"name": "a"}]}}).map(c, c.name)`, map[string]any{}, nameList("a")},
+		{"map literal empty", `has(podSpec({}).hostPID)`, map[string]any{}, false},
+		{"container predicate", `podContainers(resource).all(c, !has(c.securityContext) || c.securityContext.privileged != true)`,
+			map[string]any{"spec": map[string]any{"containers": []any{
+				map[string]any{"name": "a", "securityContext": map[string]any{"privileged": true}}}}}, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := eval(t, tc.expr, tc.res)
+			if l, ok := got.([]ref.Val); ok {
+				conv := make([]any, len(l))
+				for i, e := range l {
+					conv[i] = e.Value()
+				}
+				got = conv
+			}
+			assert.Equal(t, tc.want, got)
+		})
 	}
 }

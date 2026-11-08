@@ -23,6 +23,8 @@ func NewEnv() (*cel.Env, error) {
 		ImageTagOption(),
 		InListOption(),
 		MatchesGlobOption(),
+		PodContainersOption(),
+		PodSpecOption(),
 		SemverLTOption(),
 	)
 }

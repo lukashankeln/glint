@@ -93,6 +93,87 @@ func SemverLTOption() cel.EnvOption {
 	)
 }
 
+// PodSpecOption registers podSpec(dyn) map<string, dyn>.
+// Returns the pod spec of a workload: spec.jobTemplate.spec.template.spec
+// (CronJob), else spec.template.spec (Deployment etc.), else spec when it has
+// a containers key (Pod), else an empty map. Null, absent or wrong-typed
+// intermediate values fall through; it never errors.
+func PodSpecOption() cel.EnvOption {
+	return cel.Function("podSpec",
+		cel.Overload("podSpec_dyn",
+			[]*cel.Type{cel.DynType},
+			cel.MapType(cel.StringType, cel.DynType),
+			cel.UnaryBinding(func(val ref.Val) ref.Val {
+				return podSpecOf(val)
+			}),
+		),
+	)
+}
+
+// PodContainersOption registers podContainers(dyn) list<dyn>.
+// Concatenates the containers, initContainers and ephemeralContainers lists of
+// podSpec(resource), in that order, skipping absent, null or non-list entries.
+func PodContainersOption() cel.EnvOption {
+	return cel.Function("podContainers",
+		cel.Overload("podContainers_dyn",
+			[]*cel.Type{cel.DynType},
+			cel.ListType(cel.DynType),
+			cel.UnaryBinding(func(val ref.Val) ref.Val {
+				spec, _ := podSpecOf(val).(traits.Mapper)
+				var elems []ref.Val
+				for _, key := range []string{"containers", "initContainers", "ephemeralContainers"} {
+					lst, ok := mapGet(spec, key).(traits.Lister)
+					if !ok {
+						continue
+					}
+					for it := lst.Iterator(); it.HasNext() == types.True; {
+						elems = append(elems, it.Next())
+					}
+				}
+				return types.NewRefValList(types.DefaultTypeAdapter, elems)
+			}),
+		),
+	)
+}
+
+// mapGet returns m[key], or nil when m is nil/not a mapper or key is absent.
+func mapGet(m traits.Mapper, key string) ref.Val {
+	if m == nil {
+		return nil
+	}
+	v, ok := m.Find(types.String(key))
+	if !ok {
+		return nil
+	}
+	return v
+}
+
+// podSpecOf resolves the pod spec of a workload resource; see PodSpecOption.
+func podSpecOf(resource ref.Val) ref.Val {
+	root, _ := resource.(traits.Mapper)
+	spec, _ := mapGet(root, "spec").(traits.Mapper)
+	if spec != nil {
+		if jt, _ := mapGet(spec, "jobTemplate").(traits.Mapper); jt != nil {
+			if js, _ := mapGet(jt, "spec").(traits.Mapper); js != nil {
+				if tpl, _ := mapGet(js, "template").(traits.Mapper); tpl != nil {
+					if ps, _ := mapGet(tpl, "spec").(traits.Mapper); ps != nil {
+						return ps
+					}
+				}
+			}
+		}
+		if tpl, _ := mapGet(spec, "template").(traits.Mapper); tpl != nil {
+			if ps, _ := mapGet(tpl, "spec").(traits.Mapper); ps != nil {
+				return ps
+			}
+		}
+		if mapGet(spec, "containers") != nil {
+			return spec
+		}
+	}
+	return types.NewStringInterfaceMap(types.DefaultTypeAdapter, map[string]any{})
+}
+
 // extractImageTag parses a container image reference and returns its tag.
 // Returns "" for digest references, "latest" for references without a tag.
 func extractImageTag(image string) string {
