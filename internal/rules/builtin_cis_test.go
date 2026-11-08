@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	cisFixtureDir  = "testdata/catalogs/cis"
+	cisFixtureDir  = "testdata/builtin/cis"
 	expectLabel    = "glint.test/expect"
 	expectViolates = "violation"
 	expectComplies = "compliant"
@@ -50,14 +50,14 @@ func loadCISFixture(t *testing.T, id string) []cisFixtureDoc {
 
 func cisEngine(t *testing.T) *Engine {
 	t.Helper()
-	engine, err := NewEngine(catalogCfg(config.CatalogConfig{Enabled: true}))
+	engine, err := NewEngine(cisOnCfg())
 	require.NoError(t, err)
 	return engine
 }
 
-func TestCISCatalog_Fixtures(t *testing.T) {
+func TestCISBuiltIn_Fixtures(t *testing.T) {
 	engine := cisEngine(t)
-	ids, err := CatalogRuleIDs("cis")
+	ids, err := BuiltInCategoryRuleIDs("cis")
 	require.NoError(t, err)
 	for _, id := range ids {
 		t.Run(id, func(t *testing.T) {
@@ -78,9 +78,9 @@ func TestCISCatalog_Fixtures(t *testing.T) {
 	}
 }
 
-func TestCISCatalog_NoEvalErrors(t *testing.T) {
+func TestCISBuiltIn_NoEvalErrors(t *testing.T) {
 	engine := cisEngine(t)
-	ids, err := CatalogRuleIDs("cis")
+	ids, err := BuiltInCategoryRuleIDs("cis")
 	require.NoError(t, err)
 	for _, id := range ids {
 		for _, d := range loadCISFixture(t, id) {
@@ -92,13 +92,19 @@ func TestCISCatalog_NoEvalErrors(t *testing.T) {
 	}
 }
 
-func TestCISCatalog_Coverage(t *testing.T) {
-	ids, err := CatalogRuleIDs("cis")
+func TestCISBuiltIn_Coverage(t *testing.T) {
+	ids, err := BuiltInCategoryRuleIDs("cis")
 	require.NoError(t, err)
 	assert.Len(t, ids, cisRuleCount)
 
-	defs, err := LoadCatalogs(catalogCfg(config.CatalogConfig{Enabled: true}))
+	all, err := LoadBuiltIns(cisOnCfg())
 	require.NoError(t, err)
+	var defs []RuleDef
+	for _, d := range all {
+		if d.Source == "built-in:cis" {
+			defs = append(defs, d)
+		}
+	}
 	require.Len(t, defs, cisRuleCount)
 
 	for _, d := range defs {

@@ -27,7 +27,7 @@ type RuleDef struct {
 	Match       MatchFilter
 	Expression  string // CEL expression; true = compliant, false = violation
 	Message     string // Go text/template; vars: .kind .name .namespace .apiVersion .severity
-	Source      string // "built-in" | "glint.yaml" | "catalog:<name>" | file path
+	Source      string // "built-in" | "glint.yaml" | "built-in:<category>" | file path
 	OnEvalError string // "error" (default) or "warning"
 }
 

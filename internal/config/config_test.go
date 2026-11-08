@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -142,4 +144,43 @@ func TestValidate_CatalogSeverity(t *testing.T) {
 func TestDefault_NoCatalogs(t *testing.T) {
 	cfg := validConfig(t)
 	assert.Empty(t, cfg.Rules.Catalogs)
+}
+
+func TestLoad_BuiltInInlineOverrides(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "glint.yaml")
+	doc := `rules:
+  built_in:
+    no_latest_tag:
+      severity: warning
+    cis-5.1.1-cluster-admin-binding:
+      enabled: false
+    cis_5.7.4_default_namespace:
+      severity: info
+`
+	require.NoError(t, os.WriteFile(path, []byte(doc), 0o644))
+	cfg, err := Load(path)
+	require.NoError(t, err)
+
+	assert.Equal(t, "warning", cfg.Rules.BuiltIn.NoLatestTag.Severity)
+	require.Len(t, cfg.Rules.BuiltIn.Rules, 2)
+	ca := cfg.Rules.BuiltIn.Rules["cis-5.1.1-cluster-admin-binding"]
+	require.NotNil(t, ca.Enabled)
+	assert.False(t, *ca.Enabled)
+	ns := cfg.Rules.BuiltIn.Rules["cis_5.7.4_default_namespace"]
+	assert.Nil(t, ns.Enabled)
+	assert.Equal(t, "info", ns.Severity)
+	assert.NotContains(t, cfg.Rules.BuiltIn.Rules, "no_latest_tag")
+}
+
+func TestValidate_BuiltInInlineSeverity(t *testing.T) {
+	cfg := validConfig(t)
+	cfg.Rules.BuiltIn.Rules = map[string]BuiltInRuleOverride{"b-rule": {Severity: "bad"}, "a-rule": {Severity: "Warning"}}
+	assert.NoError(t, func() error {
+		c := validConfig(t)
+		c.Rules.BuiltIn.Rules = map[string]BuiltInRuleOverride{"a-rule": {Severity: "Warning"}}
+		return c.Validate()
+	}())
+	err := cfg.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `rules.built_in.b-rule: unknown severity "bad" (must be error, warning, or info)`)
 }

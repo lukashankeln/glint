@@ -50,13 +50,6 @@ func NewEngine(cfg config.RulesConfig) (*Engine, error) {
 	}
 	defs = append(defs, builtIns...)
 
-	// Opt-in catalog rules
-	catalog, err := LoadCatalogs(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("loading rule catalogs: %w", err)
-	}
-	defs = append(defs, catalog...)
-
 	// Inline custom rules from config
 	inline, err := LoadCustomInline(cfg)
 	if err != nil {
@@ -73,8 +66,8 @@ func NewEngine(cfg config.RulesConfig) (*Engine, error) {
 		defs = append(defs, external...)
 	}
 
-	if err := checkCatalogCollisions(defs); err != nil {
-		return nil, fmt.Errorf("loading rule catalogs: %w", err)
+	if err := checkBuiltInCategoryCollisions(defs); err != nil {
+		return nil, fmt.Errorf("loading built-in rules: %w", err)
 	}
 
 	compiled := make([]CompiledRule, 0, len(defs))
@@ -255,19 +248,20 @@ func renderMessage(tmpl *template.Template, fallback string, severity Severity, 
 	return buf.String()
 }
 
-// checkCatalogCollisions rejects a catalog rule whose ID equals the ID of any
-// non-catalog rule. Catalog rules that are disabled (excluded via
-// exclude_rules) are skipped so users can replace them. Duplicates among non-catalog rules are not checked here.
-func checkCatalogCollisions(defs []RuleDef) error {
-	isCatalog := func(d RuleDef) bool { return strings.HasPrefix(d.Source, "catalog:") }
+// checkBuiltInCategoryCollisions rejects an enabled category built-in rule
+// (Source "built-in:<category>") whose ID equals the ID of any non-built-in
+// rule (custom inline or rule file). Disabled category rules are skipped so
+// users can replace them. Duplicates among non-built-in rules are not checked here.
+func checkBuiltInCategoryCollisions(defs []RuleDef) error {
+	isCategory := func(d RuleDef) bool { return strings.HasPrefix(d.Source, "built-in:") }
 	others := map[string]string{}
 	for _, d := range defs {
-		if !isCatalog(d) {
+		if d.Source != "built-in" && !isCategory(d) {
 			others[d.ID] = d.Source
 		}
 	}
 	for _, d := range defs {
-		if isCatalog(d) && d.Enabled {
+		if isCategory(d) && d.Enabled {
 			if src, ok := others[d.ID]; ok {
 				return fmt.Errorf("rule ID %q from %s collides with rule from %s", d.ID, d.Source, src)
 			}

@@ -101,16 +101,17 @@ type RulesConfig struct {
 	Custom     []CustomRuleDef    `yaml:"custom"`
 	RuleFiles  []string           `yaml:"rule_files"`
 	Exceptions []ExceptionConfig  `yaml:"exceptions"`
-	// Catalogs enables opt-in predefined rule catalogs by name (e.g. "cis").
-	// Nil by default: every catalog is off.
+	// Catalogs is a shorthand for enabling a whole built-in rule category by
+	// name (e.g. "cis"). Nil by default: every category is off.
 	Catalogs map[string]CatalogConfig `yaml:"catalogs"`
 }
 
-// CatalogConfig configures one opt-in rule catalog.
+// CatalogConfig is the category shorthand: it sets the default enabled state
+// and severity of every built-in rule in one category. Per-rule entries under
+// rules.built_in take precedence.
 type CatalogConfig struct {
-	Enabled      bool     `yaml:"enabled"`
-	Severity     string   `yaml:"severity"` // overrides every rule's severity when set
-	ExcludeRules []string `yaml:"exclude_rules"`
+	Enabled  bool   `yaml:"enabled"`
+	Severity string `yaml:"severity"` // default severity for the category's rules when set
 }
 
 type ExceptionConfig struct {
@@ -129,6 +130,18 @@ type BuiltInRulesConfig struct {
 	NoLatestTag      BuiltInRuleConfig `yaml:"no_latest_tag"`
 	ResourceRequests BuiltInRuleConfig `yaml:"resource_requests"`
 	DeprecatedAPIs   BuiltInRuleConfig `yaml:"deprecated_apis"`
+
+	// Rules holds per-rule overrides for category built-in rules (e.g. CIS),
+	// keyed by rule ID. Any key other than the named rules above lands here.
+	// Matching normalises "-" to "_" so both spellings address the same rule.
+	Rules map[string]BuiltInRuleOverride `yaml:",inline"`
+}
+
+// BuiltInRuleOverride overrides the enabled state and/or severity of one
+// category built-in rule. A nil Enabled leaves the category default in place.
+type BuiltInRuleOverride struct {
+	Enabled  *bool  `yaml:"enabled"`
+	Severity string `yaml:"severity"`
 }
 
 type BuiltInRuleConfig struct {
@@ -283,6 +296,17 @@ func (c *Config) Validate() error {
 	for _, b := range builtIns {
 		if b.sev != "" && !ValidSeverity(b.sev) {
 			return fmt.Errorf("rules.built_in.%s: unknown severity %q (must be error, warning, or info)", b.name, b.sev)
+		}
+	}
+
+	ruleKeys := make([]string, 0, len(c.Rules.BuiltIn.Rules))
+	for key := range c.Rules.BuiltIn.Rules {
+		ruleKeys = append(ruleKeys, key)
+	}
+	sort.Strings(ruleKeys)
+	for _, key := range ruleKeys {
+		if sev := c.Rules.BuiltIn.Rules[key].Severity; sev != "" && !ValidSeverity(sev) {
+			return fmt.Errorf("rules.built_in.%s: unknown severity %q (must be error, warning, or info)", key, sev)
 		}
 	}
 

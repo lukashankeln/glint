@@ -40,6 +40,9 @@ rules:
     deprecated_apis:
       enabled: true
       severity: error
+    # Per-rule override of a category rule (uncomment together with the catalog):
+    # cis-5.7.4-default-namespace:
+    #   enabled: false
 
   # Custom CEL rules — add your own policies here:
   custom: []
@@ -48,7 +51,7 @@ rules:
   # rule_files:
   #   - "glint-rules/*.yaml"
 
-  # Opt-in predefined rule catalogs (see docs/rule-catalogs.md):
+  # Opt-in built-in rule categories (see docs/rule-catalogs.md):
   # catalogs:
   #   cis:
   #     enabled: true
