@@ -2,25 +2,39 @@
 
 ## [0.3.2](https://github.com/lukashankeln/glint/compare/v0.3.1...v0.3.2) (2026-11-08)
 
+This release adds glint's first built-in rule catalog: the CIS Kubernetes Benchmark v1.10 (section 5, Policies), shipped as 29 opt-in rules that use the same schema and CEL engine as your own custom rules. It also reduces memory used when splitting large rendered manifests.
 
 ### Features
 
-* **rules:** add CIS Kubernetes Benchmark v1.10 catalog rules ([139f3e0](https://github.com/lukashankeln/glint/commit/139f3e0324b705c90239f31e598c8b211de31cd9))
-* **rules:** add opt-in predefined rule catalogs ([1de6c0c](https://github.com/lukashankeln/glint/commit/1de6c0c986a2d8e787337c326f85e15d4f003a03))
-* **rules:** add podSpec and podContainers CEL helpers ([ae0d61c](https://github.com/lukashankeln/glint/commit/ae0d61c48e4a721200682b2b42b8561b238d34ee))
+**CIS Kubernetes Benchmark catalog** — 29 rules covering RBAC (5.1.x), pod security (5.2.x), secrets-as-env (5.4.1) and seccomp/security-context/namespace controls (5.7.x), disabled by default so nothing runs until you opt in ([139f3e0](https://github.com/lukashankeln/glint/commit/139f3e0324b705c90239f31e598c8b211de31cd9)). Enable the whole category, or just the rules you want, in `glint.yaml`:
 
+```yaml
+rules:
+  catalogs:
+    cis:
+      enabled: true       # enable every built-in cis-* rule
+      severity: warning   # optional: default severity for the whole category
+  built_in:
+    cis-5.7.3-security-context:   # override a single rule by ID
+      enabled: false
+    cis-5.2.2-privileged-containers:
+      severity: error
+```
+
+Run `glint rules list` to see which CIS rules are enabled and at what severity. A disabled CIS rule can be replaced with your own version by disabling it under `rules.built_in` and defining a `custom` rule with the same ID. See [`docs/rule-catalogs.md`](docs/rule-catalogs.md) for the full rule list, severities, and how replacement and precedence work. This landed through:
+* **rules:** add opt-in predefined rule catalogs, the `rules.catalogs.<name>` mechanism itself, with per-category severity override and collision checks against custom/rule-file rules ([1de6c0c](https://github.com/lukashankeln/glint/commit/1de6c0c986a2d8e787337c326f85e15d4f003a03))
+* **rules:** add `podSpec` and `podContainers` CEL helpers, which resolve a workload's pod spec and container list the same way regardless of whether it's a bare Pod, a `spec.template.spec`-nested workload, or a CronJob's doubly-nested job template, so the CIS rules (and your own custom rules) can target one expression across all of them ([ae0d61c](https://github.com/lukashankeln/glint/commit/ae0d61c48e4a721200682b2b42b8561b238d34ee))
 
 ### Bug Fixes
 
-* **rules:** catch container seccomp overrides and wildcard subresources in CIS rules ([cba31c5](https://github.com/lukashankeln/glint/commit/cba31c59ddd5c063cc2fa7c996cfdd69a21262cc))
-* **rules:** clarify CIS 5.7.2 message and pin seccomp fallback fixtures ([9a65040](https://github.com/lukashankeln/glint/commit/9a6504054392afd82136b68a285b421517699ff5))
-* **rules:** let excluded catalog rules be replaced and tighten tests ([1dfb0da](https://github.com/lukashankeln/glint/commit/1dfb0daa7de9a32fdbac551ea5add28469d3b167))
-* **rules:** list top-level built-ins before category rules ([e6043ae](https://github.com/lukashankeln/glint/commit/e6043aede6d98bdc56c971319a567a3e9a8a9fc8))
-
+* **rules:** catch container-level seccomp profile overrides and wildcard RBAC subresources that earlier CIS rule revisions missed ([cba31c5](https://github.com/lukashankeln/glint/commit/cba31c59ddd5c063cc2fa7c996cfdd69a21262cc))
+* **rules:** clarify the CIS 5.7.2 (seccomp profile) finding message and pin its fallback-profile fixtures ([9a65040](https://github.com/lukashankeln/glint/commit/9a6504054392afd82136b68a285b421517699ff5))
+* **rules:** let a catalog rule excluded via `enabled: false` be replaced by a custom rule of the same ID, and tighten the collision tests around it ([1dfb0da](https://github.com/lukashankeln/glint/commit/1dfb0daa7de9a32fdbac551ea5add28469d3b167))
+* **rules:** list top-level built-ins before category rules in `glint rules list`, so catalog rules no longer push named built-ins out of their expected order ([e6043ae](https://github.com/lukashankeln/glint/commit/e6043aede6d98bdc56c971319a567a3e9a8a9fc8))
 
 ### Performance
 
-* replace yaml.marshal and recude memory footprint ([e81374b](https://github.com/lukashankeln/glint/commit/e81374b5936f36fa5d8056de6d03e05436d88bb5))
+* **render:** stop re-encoding each split YAML document through `yaml.Marshal` to populate `Manifest.Raw`; slice it directly from the original source bytes instead, cutting allocations when splitting large rendered streams into per-resource manifests ([e81374b](https://github.com/lukashankeln/glint/commit/e81374b5936f36fa5d8056de6d03e05436d88bb5))
 
 ## [0.3.1](https://github.com/lukashankeln/glint/compare/v0.3.0...v0.3.1) (2026-11-06)
 
