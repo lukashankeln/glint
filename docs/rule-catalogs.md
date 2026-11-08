@@ -58,13 +58,13 @@ Validation:
 - They are checked even when `enabled: false`.
 - Disabled CIS rules still appear in `glint rules list` with `ENABLED` set to `no`.
 
-> `exclude_rules` was removed. Disable a rule with `rules.built_in.<rule-id>.enabled: false` instead. `glint.yaml` is parsed without strict key checking, so a leftover `exclude_rules` (or any misspelt key, for example `catalog:` instead of `catalogs:`) is silently ignored: the rules you meant to exclude still run, and a misspelt `catalogs:` means no CIS rule is enabled. Check with `glint rules list` that the rules you expect are enabled and the ones you disabled show `ENABLED` `no`.
+> `exclude_rules` was removed. Disable a rule with `rules.built_in.<rule-id>.enabled: false` instead. `glint.yaml` is parsed without strict key checking, so a leftover `exclude_rules` (or any misspelt key, for example `catalog:` instead of `catalogs:`) is silently ignored: the rules you meant to exclude still run, and a misspelt `catalogs:` means no CIS rule is enabled unless one is enabled individually under `rules.built_in`. Check with `glint rules list` that the rules you expect are enabled and the ones you disabled show `ENABLED` `no`.
 
 ---
 
 ## Disabling and replacing rules
 
-`rules.built_in.<rule-id>.enabled: false` disables a rule for the whole run. It still shows up in `glint rules list` with `ENABLED` set to `no`, so the exclusion is visible.
+`rules.built_in.<rule-id>.enabled: false` disables a rule for the whole run. It still shows up in `glint rules list` with `ENABLED` set to `no`, so the override is visible.
 
 To replace a CIS rule with your own version, disable it and define a rule with the same ID under `custom` or in a rule file:
 
@@ -186,4 +186,4 @@ These controls are not implemented, because they cannot be decided from a single
 - **5.7.4 only catches an explicit `namespace: default`.** A manifest without `metadata.namespace` is not flagged, because glint cannot know the namespace it will be applied to (for example through `kubectl -n` or an ArgoCD destination namespace). When glint renders a Helm chart and the app has no namespace (ArgoCD `destination.namespace`, Flux `targetNamespace` or the HelmRelease namespace, or `discovery.overrides[].helm.namespace`), the release namespace defaults to `default`, so charts that template `.Release.Namespace` are flagged; set the namespace or disable the rule.
 - **Evaluation errors are reported at `error` severity** regardless of the rule's own severity, because every CIS rule sets `on_eval_error: error` (a rule with `on_eval_error: warning` logs and skips instead).
 - **Null entries in container lists are handled inconsistently.** `podContainers` returns list elements as-is, so a `null` entry in `containers` is not skipped; in testing no CIS rule raised an evaluation error on it: some rules pass it, others flag it as a container without settings. The API server rejects such manifests anyway.
-- **glint checks manifests, not live cluster state.** The CIS rules do not replace [kube-bench](https://github.com/aquasecurity/kube-bench) and complements it: kube-bench audits nodes and the control plane, glint audits what you are about to deploy.
+- **glint checks manifests, not live cluster state.** The CIS rules do not replace [kube-bench](https://github.com/aquasecurity/kube-bench) and complement it: kube-bench audits nodes and the control plane, glint audits what you are about to deploy.

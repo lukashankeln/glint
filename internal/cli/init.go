@@ -40,7 +40,7 @@ rules:
     deprecated_apis:
       enabled: true
       severity: error
-    # Per-rule override of a category rule (enabled: true works without the catalog):
+    # Per-rule override of a category rule (takes precedence over rules.catalogs):
     # cis-5.7.4-default-namespace:
     #   enabled: false
 
