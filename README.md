@@ -159,6 +159,21 @@ See [`docs/writing-rules.md`](docs/writing-rules.md) for a full guide with examp
 
 ---
 
+## Rule catalogs
+
+Predefined rule sets are opt-in. Enable the CIS Kubernetes Benchmark v1.10 (section 5) rules with:
+
+```yaml
+rules:
+  catalogs:
+    cis:
+      enabled: true
+```
+
+See [`docs/rule-catalogs.md`](docs/rule-catalogs.md) for the rule list, severity overrides, exclusions and limitations.
+
+---
+
 ## Plugins
 
 Plugins let any external tool participate in the lint pipeline and surface findings as native glint violations:
@@ -187,6 +202,7 @@ See [`docs/README.md`](docs/README.md) for the index.
 
 - [Configuration](docs/configuration.md)
 - [Writing custom rules](docs/writing-rules.md)
+- [Rule catalogs (CIS)](docs/rule-catalogs.md)
 - [Plugins](docs/plugins.md)
 - [CLI reference and output formats](docs/cli.md)
 - [GitHub Actions and pre-commit](docs/ci.md)

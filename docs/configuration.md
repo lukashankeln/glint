@@ -224,6 +224,22 @@ rules:
 
 Each file contains a `rules:` list of rule definitions (or a single rule) using the same schema as `custom` above. A rule file that fails to parse is reported as an error rather than skipped.
 
+### Rule catalogs
+
+Opt in to predefined rule sets that ship with glint:
+
+```yaml
+rules:
+  catalogs:
+    cis:                    # CIS Kubernetes Benchmark v1.10, section 5
+      enabled: true         # default: false
+      severity: warning     # optional: override the severity of every rule in the catalog
+      exclude_rules:        # optional: catalog rule IDs to disable
+        - cis-5.7.3-security-context
+```
+
+Catalogs are disabled unless `enabled: true`. An unknown catalog name, an unknown `exclude_rules` ID (even with `enabled: false`) or an invalid `severity` is rejected when the config is loaded. See [`docs/rule-catalogs.md`](rule-catalogs.md) for the rule list, replacing a rule and limitations.
+
 ### Exceptions
 
 Skip a rule for specific resources without disabling it globally:
@@ -333,6 +349,11 @@ rules:
 
   rule_files:
     - "policies/security.yaml"
+
+  catalogs:
+    cis:
+      enabled: false      # opt in to the CIS Kubernetes Benchmark rules
+      exclude_rules: []
 
   exceptions:
     - rule: resource-requests
