@@ -1,0 +1,12 @@
+id: cis-5.1.1-cluster-admin-binding
+description: "CIS 5.1.1: Ensure that the cluster-admin role is only used where required"
+severity: warning
+on_eval_error: error
+match:
+  kinds:
+    - ClusterRoleBinding
+    - RoleBinding
+expression: |
+  !((has(resource.roleRef) && resource.roleRef != null && has(resource.roleRef.kind) && resource.roleRef.kind != null && resource.roleRef.kind == "ClusterRole") &&
+    (has(resource.roleRef) && resource.roleRef != null && has(resource.roleRef.name) && resource.roleRef.name != null && resource.roleRef.name == "cluster-admin"))
+message: "{{ .kind }}/{{ .name }} binds the cluster-admin ClusterRole"

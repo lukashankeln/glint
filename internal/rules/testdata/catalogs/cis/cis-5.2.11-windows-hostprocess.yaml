@@ -1,0 +1,431 @@
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "pod-level-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+  securityContext:
+    windowsOptions:
+      hostProcess: true
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "pod-level-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "pod-level"
+  template:
+    metadata:
+      labels:
+        app: "pod-level"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+      securityContext:
+        windowsOptions:
+          hostProcess: true
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "pod-level-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+          securityContext:
+            windowsOptions:
+              hostProcess: true
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "container-level-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      securityContext:
+        windowsOptions:
+          hostProcess: true
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "container-level-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "container-level"
+  template:
+    metadata:
+      labels:
+        app: "container-level"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          securityContext:
+            windowsOptions:
+              hostProcess: true
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "container-level-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              securityContext:
+                windowsOptions:
+                  hostProcess: true
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "init-level-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+  initContainers:
+    - name: "init"
+      image: "nginx:1.27"
+      securityContext:
+        windowsOptions:
+          hostProcess: true
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "init-level-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "init-level"
+  template:
+    metadata:
+      labels:
+        app: "init-level"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+      initContainers:
+        - name: "init"
+          image: "nginx:1.27"
+          securityContext:
+            windowsOptions:
+              hostProcess: true
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "init-level-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+          initContainers:
+            - name: "init"
+              image: "nginx:1.27"
+              securityContext:
+                windowsOptions:
+                  hostProcess: true
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "absent-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "absent-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "absent"
+  template:
+    metadata:
+      labels:
+        app: "absent"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "absent-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "null-options-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      securityContext:
+        windowsOptions: null
+  securityContext:
+    windowsOptions: null
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "null-options-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "null-options"
+  template:
+    metadata:
+      labels:
+        app: "null-options"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          securityContext:
+            windowsOptions: null
+      securityContext:
+        windowsOptions: null
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "null-options-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              securityContext:
+                windowsOptions: null
+          securityContext:
+            windowsOptions: null
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "false-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      securityContext:
+        windowsOptions:
+          hostProcess: false
+  securityContext:
+    windowsOptions:
+      hostProcess: false
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "false-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "false"
+  template:
+    metadata:
+      labels:
+        app: "false"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          securityContext:
+            windowsOptions:
+              hostProcess: false
+      securityContext:
+        windowsOptions:
+          hostProcess: false
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "false-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              securityContext:
+                windowsOptions:
+                  hostProcess: false
+          securityContext:
+            windowsOptions:
+              hostProcess: false
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "null-flag-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+  securityContext:
+    windowsOptions:
+      hostProcess: null
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "null-flag-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "null-flag"
+  template:
+    metadata:
+      labels:
+        app: "null-flag"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+      securityContext:
+        windowsOptions:
+          hostProcess: null
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "null-flag-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+          securityContext:
+            windowsOptions:
+              hostProcess: null
+          restartPolicy: "OnFailure"

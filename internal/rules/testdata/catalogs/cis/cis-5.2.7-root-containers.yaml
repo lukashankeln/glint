@@ -1,0 +1,665 @@
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "nothing-set-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "nothing-set-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "nothing-set"
+  template:
+    metadata:
+      labels:
+        app: "nothing-set"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "nothing-set-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "null-sc-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      securityContext: null
+  securityContext: null
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "null-sc-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "null-sc"
+  template:
+    metadata:
+      labels:
+        app: "null-sc"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          securityContext: null
+      securityContext: null
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "null-sc-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              securityContext: null
+          securityContext: null
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "container-false-pod-true-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      securityContext:
+        runAsNonRoot: false
+  securityContext:
+    runAsNonRoot: true
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "container-false-pod-true-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "container-false-pod-true"
+  template:
+    metadata:
+      labels:
+        app: "container-false-pod-true"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          securityContext:
+            runAsNonRoot: false
+      securityContext:
+        runAsNonRoot: true
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "container-false-pod-true-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              securityContext:
+                runAsNonRoot: false
+          securityContext:
+            runAsNonRoot: true
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "container-uid0-pod-nonroot-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      securityContext:
+        runAsUser: 0
+  securityContext:
+    runAsNonRoot: true
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "container-uid0-pod-nonroot-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "container-uid0-pod-nonroot"
+  template:
+    metadata:
+      labels:
+        app: "container-uid0-pod-nonroot"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          securityContext:
+            runAsUser: 0
+      securityContext:
+        runAsNonRoot: true
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "container-uid0-pod-nonroot-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              securityContext:
+                runAsUser: 0
+          securityContext:
+            runAsNonRoot: true
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "pod-uid0-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+  securityContext:
+    runAsUser: 0
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "pod-uid0-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "pod-uid0"
+  template:
+    metadata:
+      labels:
+        app: "pod-uid0"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+      securityContext:
+        runAsUser: 0
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "pod-uid0-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+          securityContext:
+            runAsUser: 0
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "init-root-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      securityContext:
+        runAsNonRoot: true
+  initContainers:
+    - name: "app"
+      image: "nginx:1.27"
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "init-root-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "init-root"
+  template:
+    metadata:
+      labels:
+        app: "init-root"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          securityContext:
+            runAsNonRoot: true
+      initContainers:
+        - name: "app"
+          image: "nginx:1.27"
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "init-root-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              securityContext:
+                runAsNonRoot: true
+          initContainers:
+            - name: "app"
+              image: "nginx:1.27"
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "container-nonroot-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      securityContext:
+        runAsNonRoot: true
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "container-nonroot-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "container-nonroot"
+  template:
+    metadata:
+      labels:
+        app: "container-nonroot"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          securityContext:
+            runAsNonRoot: true
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "container-nonroot-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              securityContext:
+                runAsNonRoot: true
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "container-uid-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      securityContext:
+        runAsUser: 1000
+  initContainers:
+    - name: "init"
+      image: "nginx:1.27"
+      securityContext:
+        runAsUser: 1000
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "container-uid-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "container-uid"
+  template:
+    metadata:
+      labels:
+        app: "container-uid"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          securityContext:
+            runAsUser: 1000
+      initContainers:
+        - name: "init"
+          image: "nginx:1.27"
+          securityContext:
+            runAsUser: 1000
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "container-uid-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              securityContext:
+                runAsUser: 1000
+          initContainers:
+            - name: "init"
+              image: "nginx:1.27"
+              securityContext:
+                runAsUser: 1000
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "pod-nonroot-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+  securityContext:
+    runAsNonRoot: true
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "pod-nonroot-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "pod-nonroot"
+  template:
+    metadata:
+      labels:
+        app: "pod-nonroot"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+      securityContext:
+        runAsNonRoot: true
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "pod-nonroot-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+          securityContext:
+            runAsNonRoot: true
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "pod-uid-null-sc-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      securityContext: null
+  securityContext:
+    runAsUser: 1000
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "pod-uid-null-sc-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "pod-uid-null-sc"
+  template:
+    metadata:
+      labels:
+        app: "pod-uid-null-sc"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          securityContext: null
+      securityContext:
+        runAsUser: 1000
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "pod-uid-null-sc-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              securityContext: null
+          securityContext:
+            runAsUser: 1000
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "container-nonroot-pod-uid0-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      securityContext:
+        runAsNonRoot: true
+  securityContext:
+    runAsUser: 0
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "container-nonroot-pod-uid0-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "container-nonroot-pod-uid0"
+  template:
+    metadata:
+      labels:
+        app: "container-nonroot-pod-uid0"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          securityContext:
+            runAsNonRoot: true
+      securityContext:
+        runAsUser: 0
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "container-nonroot-pod-uid0-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              securityContext:
+                runAsNonRoot: true
+          securityContext:
+            runAsUser: 0
+          restartPolicy: "OnFailure"

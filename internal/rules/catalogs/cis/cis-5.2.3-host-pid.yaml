@@ -1,0 +1,17 @@
+id: cis-5.2.3-host-pid
+description: "CIS 5.2.3: Minimize the admission of containers wishing to share the host process ID namespace"
+severity: error
+on_eval_error: error
+match:
+  kinds:
+    - Pod
+    - Deployment
+    - StatefulSet
+    - DaemonSet
+    - ReplicaSet
+    - ReplicationController
+    - Job
+    - CronJob
+expression: |
+  !(has(podSpec(resource).hostPID) && podSpec(resource).hostPID != null && podSpec(resource).hostPID == true)
+message: "{{ .kind }}/{{ .name }} shares the host process ID namespace (hostPID)"

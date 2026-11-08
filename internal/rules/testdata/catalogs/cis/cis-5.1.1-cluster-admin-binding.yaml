@@ -1,0 +1,140 @@
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRoleBinding"
+metadata:
+  name: "admin-clusterrolebinding"
+  labels:
+    glint.test/expect: "violation"
+roleRef:
+  apiGroup: "rbac.authorization.k8s.io"
+  kind: "ClusterRole"
+  name: "cluster-admin"
+subjects:
+  - kind: "User"
+    name: "alice"
+    apiGroup: "rbac.authorization.k8s.io"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "RoleBinding"
+metadata:
+  name: "admin-rolebinding"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+roleRef:
+  apiGroup: "rbac.authorization.k8s.io"
+  kind: "ClusterRole"
+  name: "cluster-admin"
+subjects:
+  - kind: "User"
+    name: "alice"
+    apiGroup: "rbac.authorization.k8s.io"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRoleBinding"
+metadata:
+  name: "other-clusterrole-clusterrolebinding"
+  labels:
+    glint.test/expect: "compliant"
+roleRef:
+  apiGroup: "rbac.authorization.k8s.io"
+  kind: "ClusterRole"
+  name: "admin"
+subjects:
+  - kind: "User"
+    name: "alice"
+    apiGroup: "rbac.authorization.k8s.io"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "RoleBinding"
+metadata:
+  name: "other-clusterrole-rolebinding"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+roleRef:
+  apiGroup: "rbac.authorization.k8s.io"
+  kind: "ClusterRole"
+  name: "admin"
+subjects:
+  - kind: "User"
+    name: "alice"
+    apiGroup: "rbac.authorization.k8s.io"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRoleBinding"
+metadata:
+  name: "role-named-admin-clusterrolebinding"
+  labels:
+    glint.test/expect: "compliant"
+roleRef:
+  apiGroup: "rbac.authorization.k8s.io"
+  kind: "Role"
+  name: "cluster-admin"
+subjects:
+  - kind: "User"
+    name: "alice"
+    apiGroup: "rbac.authorization.k8s.io"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "RoleBinding"
+metadata:
+  name: "role-named-admin-rolebinding"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+roleRef:
+  apiGroup: "rbac.authorization.k8s.io"
+  kind: "Role"
+  name: "cluster-admin"
+subjects:
+  - kind: "User"
+    name: "alice"
+    apiGroup: "rbac.authorization.k8s.io"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRoleBinding"
+metadata:
+  name: "null-roleref-clusterrolebinding"
+  labels:
+    glint.test/expect: "compliant"
+roleRef: null
+subjects:
+  - kind: "User"
+    name: "alice"
+    apiGroup: "rbac.authorization.k8s.io"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "RoleBinding"
+metadata:
+  name: "null-roleref-rolebinding"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+roleRef: null
+subjects:
+  - kind: "User"
+    name: "alice"
+    apiGroup: "rbac.authorization.k8s.io"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRoleBinding"
+metadata:
+  name: "no-roleref-clusterrolebinding"
+  labels:
+    glint.test/expect: "compliant"
+subjects:
+  - kind: "User"
+    name: "alice"
+    apiGroup: "rbac.authorization.k8s.io"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "RoleBinding"
+metadata:
+  name: "no-roleref-rolebinding"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+subjects:
+  - kind: "User"
+    name: "alice"
+    apiGroup: "rbac.authorization.k8s.io"

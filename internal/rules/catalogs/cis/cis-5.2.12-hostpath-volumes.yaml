@@ -1,0 +1,18 @@
+id: cis-5.2.12-hostpath-volumes
+description: "CIS 5.2.12: Minimize the admission of HostPath volumes"
+severity: error
+on_eval_error: error
+match:
+  kinds:
+    - Pod
+    - Deployment
+    - StatefulSet
+    - DaemonSet
+    - ReplicaSet
+    - ReplicationController
+    - Job
+    - CronJob
+expression: |
+  !((has(podSpec(resource).volumes) && podSpec(resource).volumes != null) &&
+    podSpec(resource).volumes.exists(v, v != null && has(v.hostPath) && v.hostPath != null))
+message: "{{ .kind }}/{{ .name }} mounts a hostPath volume"

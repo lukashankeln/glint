@@ -1,0 +1,368 @@
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "add-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      securityContext:
+        capabilities:
+          add:
+            - "NET_ADMIN"
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "add-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "add"
+  template:
+    metadata:
+      labels:
+        app: "add"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          securityContext:
+            capabilities:
+              add:
+                - "NET_ADMIN"
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "add-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              securityContext:
+                capabilities:
+                  add:
+                    - "NET_ADMIN"
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "init-add-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+  initContainers:
+    - name: "init"
+      image: "nginx:1.27"
+      securityContext:
+        capabilities:
+          add:
+            - "SYS_TIME"
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "init-add-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "init-add"
+  template:
+    metadata:
+      labels:
+        app: "init-add"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+      initContainers:
+        - name: "init"
+          image: "nginx:1.27"
+          securityContext:
+            capabilities:
+              add:
+                - "SYS_TIME"
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "init-add-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+          initContainers:
+            - name: "init"
+              image: "nginx:1.27"
+              securityContext:
+                capabilities:
+                  add:
+                    - "SYS_TIME"
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "none-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "none-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "none"
+  template:
+    metadata:
+      labels:
+        app: "none"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "none-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "null-caps-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      securityContext:
+        capabilities: null
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "null-caps-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "null-caps"
+  template:
+    metadata:
+      labels:
+        app: "null-caps"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          securityContext:
+            capabilities: null
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "null-caps-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              securityContext:
+                capabilities: null
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "null-add-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      securityContext:
+        capabilities:
+          add: null
+          drop:
+            - "ALL"
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "null-add-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "null-add"
+  template:
+    metadata:
+      labels:
+        app: "null-add"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          securityContext:
+            capabilities:
+              add: null
+              drop:
+                - "ALL"
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "null-add-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              securityContext:
+                capabilities:
+                  add: null
+                  drop:
+                    - "ALL"
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "empty-add-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      securityContext:
+        capabilities:
+          add: []
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "empty-add-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "empty-add"
+  template:
+    metadata:
+      labels:
+        app: "empty-add"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          securityContext:
+            capabilities:
+              add: []
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "empty-add-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              securityContext:
+                capabilities:
+                  add: []
+          restartPolicy: "OnFailure"

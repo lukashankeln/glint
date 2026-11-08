@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: in-default
+  namespace: default
+  labels:
+    glint.test/expect: violation
+data: {}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: in-prod
+  namespace: prod
+  labels:
+    glint.test/expect: compliant
+data: {}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: no-namespace
+  labels:
+    glint.test/expect: compliant
+data: {}
