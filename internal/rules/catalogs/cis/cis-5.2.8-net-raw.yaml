@@ -1,0 +1,18 @@
+id: cis-5.2.8-net-raw
+description: "CIS 5.2.8: Minimize the admission of containers with the NET_RAW capability"
+severity: warning
+on_eval_error: error
+match:
+  kinds:
+    - Pod
+    - Deployment
+    - StatefulSet
+    - DaemonSet
+    - ReplicaSet
+    - ReplicationController
+    - Job
+    - CronJob
+expression: |
+  podContainers(resource).all(c, !(has(c.securityContext) && c.securityContext != null && has(c.securityContext.capabilities) && c.securityContext.capabilities != null && has(c.securityContext.capabilities.add) && c.securityContext.capabilities.add != null && c.securityContext.capabilities.add .exists(x, x == "NET_RAW")) &&
+      (has(c.securityContext) && c.securityContext != null && has(c.securityContext.capabilities) && c.securityContext.capabilities != null && has(c.securityContext.capabilities.drop) && c.securityContext.capabilities.drop != null && c.securityContext.capabilities.drop .exists(x, x == "NET_RAW" || x == "ALL")))
+message: "{{ .kind }}/{{ .name }} has a container that does not drop NET_RAW (or ALL) or that adds NET_RAW"

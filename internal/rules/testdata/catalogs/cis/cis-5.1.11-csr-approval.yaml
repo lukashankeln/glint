@@ -1,0 +1,242 @@
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "approval-update-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+rules:
+  - apiGroups:
+      - "certificates.k8s.io"
+    resources:
+      - "certificatesigningrequests/approval"
+    verbs:
+      - "update"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "approval-update-clusterrole"
+  labels:
+    glint.test/expect: "violation"
+rules:
+  - apiGroups:
+      - "certificates.k8s.io"
+    resources:
+      - "certificatesigningrequests/approval"
+    verbs:
+      - "update"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "approval-patch-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+rules:
+  - apiGroups:
+      - "certificates.k8s.io"
+    resources:
+      - "certificatesigningrequests/approval"
+    verbs:
+      - "patch"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "approval-patch-clusterrole"
+  labels:
+    glint.test/expect: "violation"
+rules:
+  - apiGroups:
+      - "certificates.k8s.io"
+    resources:
+      - "certificatesigningrequests/approval"
+    verbs:
+      - "patch"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "star-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "*"
+    verbs:
+      - "update"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "star-clusterrole"
+  labels:
+    glint.test/expect: "violation"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "*"
+    verbs:
+      - "update"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "approval-star-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "certificatesigningrequests/approval"
+    verbs:
+      - "*"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "approval-star-clusterrole"
+  labels:
+    glint.test/expect: "violation"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "certificatesigningrequests/approval"
+    verbs:
+      - "*"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "safe-read-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "configmaps"
+    verbs:
+      - "get"
+      - "list"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "safe-read-clusterrole"
+  labels:
+    glint.test/expect: "compliant"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "configmaps"
+    verbs:
+      - "get"
+      - "list"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "approval-get-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "certificatesigningrequests/approval"
+    verbs:
+      - "get"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "approval-get-clusterrole"
+  labels:
+    glint.test/expect: "compliant"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "certificatesigningrequests/approval"
+    verbs:
+      - "get"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "csr-create-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+rules:
+  - apiGroups:
+      - "certificates.k8s.io"
+    resources:
+      - "certificatesigningrequests"
+    verbs:
+      - "create"
+      - "update"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "csr-create-clusterrole"
+  labels:
+    glint.test/expect: "compliant"
+rules:
+  - apiGroups:
+      - "certificates.k8s.io"
+    resources:
+      - "certificatesigningrequests"
+    verbs:
+      - "create"
+      - "update"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "rules-null-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+rules: null
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "rules-null-clusterrole"
+  labels:
+    glint.test/expect: "compliant"
+rules: null
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "aggregated"
+  labels:
+    glint.test/expect: "compliant"
+aggregationRule:
+  clusterRoleSelectors:
+    - matchLabels:
+        agg: "true"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "no-rules"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"

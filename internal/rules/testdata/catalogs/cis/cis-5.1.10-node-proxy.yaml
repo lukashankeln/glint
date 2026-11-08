@@ -1,0 +1,253 @@
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "proxy-get-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "nodes/proxy"
+    verbs:
+      - "get"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "proxy-get-clusterrole"
+  labels:
+    glint.test/expect: "violation"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "nodes/proxy"
+    verbs:
+      - "get"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "star-get-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "*"
+    verbs:
+      - "get"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "star-get-clusterrole"
+  labels:
+    glint.test/expect: "violation"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "*"
+    verbs:
+      - "get"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "proxy-star-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "nodes/proxy"
+    verbs:
+      - "*"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "proxy-star-clusterrole"
+  labels:
+    glint.test/expect: "violation"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "nodes/proxy"
+    verbs:
+      - "*"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "safe-read-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "configmaps"
+    verbs:
+      - "get"
+      - "list"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "safe-read-clusterrole"
+  labels:
+    glint.test/expect: "compliant"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "configmaps"
+    verbs:
+      - "get"
+      - "list"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "nodes-get-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "nodes"
+    verbs:
+      - "get"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "nodes-get-clusterrole"
+  labels:
+    glint.test/expect: "compliant"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "nodes"
+    verbs:
+      - "get"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "proxy-empty-verbs-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "nodes/proxy"
+    verbs: []
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "proxy-empty-verbs-clusterrole"
+  labels:
+    glint.test/expect: "compliant"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "nodes/proxy"
+    verbs: []
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "proxy-no-verbs-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+rules:
+  - resources:
+      - "nodes/proxy"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "proxy-no-verbs-clusterrole"
+  labels:
+    glint.test/expect: "compliant"
+rules:
+  - resources:
+      - "nodes/proxy"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "proxy-null-verbs-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+rules:
+  - resources:
+      - "nodes/proxy"
+    verbs: null
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "proxy-null-verbs-clusterrole"
+  labels:
+    glint.test/expect: "compliant"
+rules:
+  - resources:
+      - "nodes/proxy"
+    verbs: null
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "rules-null-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+rules: null
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "rules-null-clusterrole"
+  labels:
+    glint.test/expect: "compliant"
+rules: null
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "aggregated"
+  labels:
+    glint.test/expect: "compliant"
+aggregationRule:
+  clusterRoleSelectors:
+    - matchLabels:
+        agg: "true"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "no-rules"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"

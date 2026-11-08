@@ -1,0 +1,419 @@
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "no-sc-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "no-sc-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "no-sc"
+  template:
+    metadata:
+      labels:
+        app: "no-sc"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "no-sc-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "null-sc-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      securityContext: null
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "null-sc-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "null-sc"
+  template:
+    metadata:
+      labels:
+        app: "null-sc"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          securityContext: null
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "null-sc-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              securityContext: null
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "true-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      securityContext:
+        allowPrivilegeEscalation: true
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "true-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "true"
+  template:
+    metadata:
+      labels:
+        app: "true"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          securityContext:
+            allowPrivilegeEscalation: true
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "true-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              securityContext:
+                allowPrivilegeEscalation: true
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "null-ape-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      securityContext:
+        allowPrivilegeEscalation: null
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "null-ape-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "null-ape"
+  template:
+    metadata:
+      labels:
+        app: "null-ape"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          securityContext:
+            allowPrivilegeEscalation: null
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "null-ape-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              securityContext:
+                allowPrivilegeEscalation: null
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "init-missing-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      securityContext:
+        allowPrivilegeEscalation: false
+  initContainers:
+    - name: "app"
+      image: "nginx:1.27"
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "init-missing-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "init-missing"
+  template:
+    metadata:
+      labels:
+        app: "init-missing"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          securityContext:
+            allowPrivilegeEscalation: false
+      initContainers:
+        - name: "app"
+          image: "nginx:1.27"
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "init-missing-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              securityContext:
+                allowPrivilegeEscalation: false
+          initContainers:
+            - name: "app"
+              image: "nginx:1.27"
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "one-of-two-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      securityContext:
+        allowPrivilegeEscalation: false
+    - name: "side"
+      image: "nginx:1.27"
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "one-of-two-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "one-of-two"
+  template:
+    metadata:
+      labels:
+        app: "one-of-two"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          securityContext:
+            allowPrivilegeEscalation: false
+        - name: "side"
+          image: "nginx:1.27"
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "one-of-two-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              securityContext:
+                allowPrivilegeEscalation: false
+            - name: "side"
+              image: "nginx:1.27"
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "all-false-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      securityContext:
+        allowPrivilegeEscalation: false
+  initContainers:
+    - name: "init"
+      image: "nginx:1.27"
+      securityContext:
+        allowPrivilegeEscalation: false
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "all-false-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "all-false"
+  template:
+    metadata:
+      labels:
+        app: "all-false"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          securityContext:
+            allowPrivilegeEscalation: false
+      initContainers:
+        - name: "init"
+          image: "nginx:1.27"
+          securityContext:
+            allowPrivilegeEscalation: false
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "all-false-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              securityContext:
+                allowPrivilegeEscalation: false
+          initContainers:
+            - name: "init"
+              image: "nginx:1.27"
+              securityContext:
+                allowPrivilegeEscalation: false
+          restartPolicy: "OnFailure"

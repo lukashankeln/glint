@@ -1,0 +1,263 @@
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "pods-create-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "pods"
+    verbs:
+      - "create"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "pods-create-clusterrole"
+  labels:
+    glint.test/expect: "violation"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "pods"
+    verbs:
+      - "create"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "star-star-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "*"
+    verbs:
+      - "*"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "star-star-clusterrole"
+  labels:
+    glint.test/expect: "violation"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "*"
+    verbs:
+      - "*"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "pods-star-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "pods"
+    verbs:
+      - "*"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "pods-star-clusterrole"
+  labels:
+    glint.test/expect: "violation"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "pods"
+    verbs:
+      - "*"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "star-create-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "*"
+    verbs:
+      - "create"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "star-create-clusterrole"
+  labels:
+    glint.test/expect: "violation"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "*"
+    verbs:
+      - "create"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "safe-read-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "configmaps"
+    verbs:
+      - "get"
+      - "list"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "safe-read-clusterrole"
+  labels:
+    glint.test/expect: "compliant"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "configmaps"
+    verbs:
+      - "get"
+      - "list"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "pods-read-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "pods"
+    verbs:
+      - "get"
+      - "list"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "pods-read-clusterrole"
+  labels:
+    glint.test/expect: "compliant"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "pods"
+    verbs:
+      - "get"
+      - "list"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "deploy-create-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+rules:
+  - apiGroups:
+      - "apps"
+    resources:
+      - "deployments"
+    verbs:
+      - "create"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "deploy-create-clusterrole"
+  labels:
+    glint.test/expect: "compliant"
+rules:
+  - apiGroups:
+      - "apps"
+    resources:
+      - "deployments"
+    verbs:
+      - "create"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "no-verbs-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+rules:
+  - resources:
+      - "pods"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "no-verbs-clusterrole"
+  labels:
+    glint.test/expect: "compliant"
+rules:
+  - resources:
+      - "pods"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "rules-null-role"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+rules: null
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "rules-null-clusterrole"
+  labels:
+    glint.test/expect: "compliant"
+rules: null
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  name: "aggregated"
+  labels:
+    glint.test/expect: "compliant"
+aggregationRule:
+  clusterRoleSelectors:
+    - matchLabels:
+        agg: "true"
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "Role"
+metadata:
+  name: "no-rules"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"

@@ -1,0 +1,19 @@
+# Passes when the pod has a non-null securityContext or every container has one.
+id: cis-5.7.3-security-context
+description: "CIS 5.7.3: Apply SecurityContext to your Pods and Containers"
+severity: info
+on_eval_error: error
+match:
+  kinds:
+    - Pod
+    - Deployment
+    - StatefulSet
+    - DaemonSet
+    - ReplicaSet
+    - ReplicationController
+    - Job
+    - CronJob
+expression: |
+  (has(podSpec(resource).securityContext) && podSpec(resource).securityContext != null) ||
+    podContainers(resource).all(c, (has(c.securityContext) && c.securityContext != null))
+message: "{{ .kind }}/{{ .name }} sets no securityContext on the pod or on every container"

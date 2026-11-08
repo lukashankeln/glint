@@ -1,0 +1,18 @@
+id: cis-5.2.11-windows-hostprocess
+description: "CIS 5.2.11: Minimize the admission of Windows HostProcess containers"
+severity: error
+on_eval_error: error
+match:
+  kinds:
+    - Pod
+    - Deployment
+    - StatefulSet
+    - DaemonSet
+    - ReplicaSet
+    - ReplicationController
+    - Job
+    - CronJob
+expression: |
+  !(has(podSpec(resource).securityContext) && podSpec(resource).securityContext != null && has(podSpec(resource).securityContext.windowsOptions) && podSpec(resource).securityContext.windowsOptions != null && has(podSpec(resource).securityContext.windowsOptions.hostProcess) && podSpec(resource).securityContext.windowsOptions.hostProcess != null && podSpec(resource).securityContext.windowsOptions.hostProcess == true) &&
+    podContainers(resource).all(c, !(has(c.securityContext) && c.securityContext != null && has(c.securityContext.windowsOptions) && c.securityContext.windowsOptions != null && has(c.securityContext.windowsOptions.hostProcess) && c.securityContext.windowsOptions.hostProcess != null && c.securityContext.windowsOptions.hostProcess == true))
+message: "{{ .kind }}/{{ .name }} runs a Windows HostProcess container (windowsOptions.hostProcess)"

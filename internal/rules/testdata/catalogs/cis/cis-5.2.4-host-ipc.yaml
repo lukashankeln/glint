@@ -1,0 +1,212 @@
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "on-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+  hostIPC: true
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "on-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "on"
+  template:
+    metadata:
+      labels:
+        app: "on"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+      hostIPC: true
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "on-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+          hostIPC: true
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "absent-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "absent-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "absent"
+  template:
+    metadata:
+      labels:
+        app: "absent"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "absent-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "off-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+  hostIPC: false
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "off-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "off"
+  template:
+    metadata:
+      labels:
+        app: "off"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+      hostIPC: false
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "off-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+          hostIPC: false
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "null-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+  hostIPC: null
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "null-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "null"
+  template:
+    metadata:
+      labels:
+        app: "null"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+      hostIPC: null
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "null-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+          hostIPC: null
+          restartPolicy: "OnFailure"

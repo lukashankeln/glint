@@ -1,0 +1,17 @@
+id: cis-5.2.6-allow-privilege-escalation
+description: "CIS 5.2.6: Minimize the admission of containers with allowPrivilegeEscalation"
+severity: warning
+on_eval_error: error
+match:
+  kinds:
+    - Pod
+    - Deployment
+    - StatefulSet
+    - DaemonSet
+    - ReplicaSet
+    - ReplicationController
+    - Job
+    - CronJob
+expression: |
+  podContainers(resource).all(c, (has(c.securityContext) && c.securityContext != null && has(c.securityContext.allowPrivilegeEscalation) && c.securityContext.allowPrivilegeEscalation != null && c.securityContext.allowPrivilegeEscalation == false))
+message: "{{ .kind }}/{{ .name }} has a container that does not set allowPrivilegeEscalation: false"

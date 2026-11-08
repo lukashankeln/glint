@@ -1,0 +1,353 @@
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "hostpath-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+  volumes:
+    - name: "logs"
+      hostPath:
+        path: "/var/log"
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "hostpath-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "hostpath"
+  template:
+    metadata:
+      labels:
+        app: "hostpath"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+      volumes:
+        - name: "logs"
+          hostPath:
+            path: "/var/log"
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "hostpath-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+          volumes:
+            - name: "logs"
+              hostPath:
+                path: "/var/log"
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "hostpath-second-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+  volumes:
+    - name: "tmp"
+      emptyDir: {}
+    - name: "sock"
+      hostPath:
+        path: "/var/run/docker.sock"
+        type: "Socket"
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "hostpath-second-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "hostpath-second"
+  template:
+    metadata:
+      labels:
+        app: "hostpath-second"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+      volumes:
+        - name: "tmp"
+          emptyDir: {}
+        - name: "sock"
+          hostPath:
+            path: "/var/run/docker.sock"
+            type: "Socket"
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "hostpath-second-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+          volumes:
+            - name: "tmp"
+              emptyDir: {}
+            - name: "sock"
+              hostPath:
+                path: "/var/run/docker.sock"
+                type: "Socket"
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "no-volumes-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "no-volumes-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "no-volumes"
+  template:
+    metadata:
+      labels:
+        app: "no-volumes"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "no-volumes-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "null-volumes-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+  volumes: null
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "null-volumes-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "null-volumes"
+  template:
+    metadata:
+      labels:
+        app: "null-volumes"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+      volumes: null
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "null-volumes-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+          volumes: null
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "empty-volumes-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+  volumes: []
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "empty-volumes-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "empty-volumes"
+  template:
+    metadata:
+      labels:
+        app: "empty-volumes"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+      volumes: []
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "empty-volumes-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+          volumes: []
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "emptydir-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+  volumes:
+    - name: "tmp"
+      emptyDir: {}
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "emptydir-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "emptydir"
+  template:
+    metadata:
+      labels:
+        app: "emptydir"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+      volumes:
+        - name: "tmp"
+          emptyDir: {}
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "emptydir-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+          volumes:
+            - name: "tmp"
+              emptyDir: {}
+          restartPolicy: "OnFailure"

@@ -1,0 +1,31 @@
+# Exact logic: every container (containers, initContainers, ephemeralContainers) must pass.
+# A container passes when any of these holds:
+#   - its securityContext.runAsNonRoot is true
+#   - its securityContext.runAsUser is greater than 0
+#   - it sets neither runAsNonRoot: false nor any runAsUser, and the pod
+#     securityContext has runAsNonRoot: true or runAsUser greater than 0
+# A container-level runAsUser (even 0) or runAsNonRoot: false stops the pod-level
+# values from being inherited. Absent and null fields count as unset.
+id: cis-5.2.7-root-containers
+description: "CIS 5.2.7: Minimize the admission of root containers"
+severity: warning
+on_eval_error: error
+match:
+  kinds:
+    - Pod
+    - Deployment
+    - StatefulSet
+    - DaemonSet
+    - ReplicaSet
+    - ReplicationController
+    - Job
+    - CronJob
+expression: |
+  podContainers(resource).all(c, (
+      (has(c.securityContext) && c.securityContext != null && has(c.securityContext.runAsNonRoot) && c.securityContext.runAsNonRoot != null && c.securityContext.runAsNonRoot == true) ||
+      (has(c.securityContext) && c.securityContext != null && has(c.securityContext.runAsUser) && c.securityContext.runAsUser != null && c.securityContext.runAsUser > 0) ||
+      (!(has(c.securityContext) && c.securityContext != null && has(c.securityContext.runAsNonRoot) && c.securityContext.runAsNonRoot != null && c.securityContext.runAsNonRoot == false) &&
+       !(has(c.securityContext) && c.securityContext != null && has(c.securityContext.runAsUser) && c.securityContext.runAsUser != null) &&
+       ((has(podSpec(resource).securityContext) && podSpec(resource).securityContext != null && has(podSpec(resource).securityContext.runAsNonRoot) && podSpec(resource).securityContext.runAsNonRoot != null && podSpec(resource).securityContext.runAsNonRoot == true) || (has(podSpec(resource).securityContext) && podSpec(resource).securityContext != null && has(podSpec(resource).securityContext.runAsUser) && podSpec(resource).securityContext.runAsUser != null && podSpec(resource).securityContext.runAsUser > 0)))
+    ))
+message: "{{ .kind }}/{{ .name }} has a container that may run as root"

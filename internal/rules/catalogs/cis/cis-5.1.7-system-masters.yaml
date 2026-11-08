@@ -1,0 +1,14 @@
+id: cis-5.1.7-system-masters
+description: "CIS 5.1.7: Avoid use of system:masters group"
+severity: error
+on_eval_error: error
+match:
+  kinds:
+    - ClusterRoleBinding
+    - RoleBinding
+expression: |
+  !((has(resource.subjects) && resource.subjects != null) &&
+    resource.subjects.exists(s, s != null &&
+      has(s.kind) && s.kind == "Group" &&
+      has(s.name) && s.name == "system:masters"))
+message: "{{ .kind }}/{{ .name }} binds the system:masters group"

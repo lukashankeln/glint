@@ -1,0 +1,18 @@
+id: cis-5.2.13-host-ports
+description: "CIS 5.2.13: Minimize the admission of containers which use HostPorts"
+severity: warning
+on_eval_error: error
+match:
+  kinds:
+    - Pod
+    - Deployment
+    - StatefulSet
+    - DaemonSet
+    - ReplicaSet
+    - ReplicationController
+    - Job
+    - CronJob
+expression: |
+  podContainers(resource).all(c, !((has(c.ports) && c.ports != null) &&
+      c.ports.exists(p, p != null && has(p.hostPort) && p.hostPort != null && p.hostPort != 0)))
+message: "{{ .kind }}/{{ .name }} has a container that uses a hostPort"

@@ -1,0 +1,410 @@
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "hostport-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      ports:
+        - containerPort: 80
+          hostPort: 8080
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "hostport-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "hostport"
+  template:
+    metadata:
+      labels:
+        app: "hostport"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          ports:
+            - containerPort: 80
+              hostPort: 8080
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "hostport-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              ports:
+                - containerPort: 80
+                  hostPort: 8080
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "init-hostport-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+  initContainers:
+    - name: "init"
+      image: "nginx:1.27"
+      ports:
+        - containerPort: 81
+          hostPort: 81
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "init-hostport-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "init-hostport"
+  template:
+    metadata:
+      labels:
+        app: "init-hostport"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+      initContainers:
+        - name: "init"
+          image: "nginx:1.27"
+          ports:
+            - containerPort: 81
+              hostPort: 81
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "init-hostport-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "violation"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+          initContainers:
+            - name: "init"
+              image: "nginx:1.27"
+              ports:
+                - containerPort: 81
+                  hostPort: 81
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "no-ports-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "no-ports-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "no-ports"
+  template:
+    metadata:
+      labels:
+        app: "no-ports"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "no-ports-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "null-ports-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      ports: null
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "null-ports-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "null-ports"
+  template:
+    metadata:
+      labels:
+        app: "null-ports"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          ports: null
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "null-ports-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              ports: null
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "no-hostport-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      ports:
+        - containerPort: 80
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "no-hostport-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "no-hostport"
+  template:
+    metadata:
+      labels:
+        app: "no-hostport"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          ports:
+            - containerPort: 80
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "no-hostport-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              ports:
+                - containerPort: 80
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "zero-hostport-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      ports:
+        - containerPort: 80
+          hostPort: 0
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "zero-hostport-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "zero-hostport"
+  template:
+    metadata:
+      labels:
+        app: "zero-hostport"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          ports:
+            - containerPort: 80
+              hostPort: 0
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "zero-hostport-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              ports:
+                - containerPort: 80
+                  hostPort: 0
+          restartPolicy: "OnFailure"
+---
+apiVersion: "v1"
+kind: "Pod"
+metadata:
+  name: "null-hostport-pod"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  containers:
+    - name: "app"
+      image: "nginx:1.27"
+      ports:
+        - containerPort: 80
+          hostPort: null
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "null-hostport-deploy"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "null-hostport"
+  template:
+    metadata:
+      labels:
+        app: "null-hostport"
+    spec:
+      containers:
+        - name: "app"
+          image: "nginx:1.27"
+          ports:
+            - containerPort: 80
+              hostPort: null
+---
+apiVersion: "batch/v1"
+kind: "CronJob"
+metadata:
+  name: "null-hostport-cron"
+  namespace: "prod"
+  labels:
+    glint.test/expect: "compliant"
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "app"
+              image: "nginx:1.27"
+              ports:
+                - containerPort: 80
+                  hostPort: null
+          restartPolicy: "OnFailure"

@@ -1,0 +1,17 @@
+id: cis-5.2.2-privileged-containers
+description: "CIS 5.2.2: Minimize the admission of privileged containers"
+severity: error
+on_eval_error: error
+match:
+  kinds:
+    - Pod
+    - Deployment
+    - StatefulSet
+    - DaemonSet
+    - ReplicaSet
+    - ReplicationController
+    - Job
+    - CronJob
+expression: |
+  podContainers(resource).all(c, !(has(c.securityContext) && c.securityContext != null && has(c.securityContext.privileged) && c.securityContext.privileged != null && c.securityContext.privileged == true))
+message: "{{ .kind }}/{{ .name }} runs a privileged container"

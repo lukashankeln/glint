@@ -1,0 +1,17 @@
+id: cis-5.2.4-host-ipc
+description: "CIS 5.2.4: Minimize the admission of containers wishing to share the host IPC namespace"
+severity: error
+on_eval_error: error
+match:
+  kinds:
+    - Pod
+    - Deployment
+    - StatefulSet
+    - DaemonSet
+    - ReplicaSet
+    - ReplicationController
+    - Job
+    - CronJob
+expression: |
+  !(has(podSpec(resource).hostIPC) && podSpec(resource).hostIPC != null && podSpec(resource).hostIPC == true)
+message: "{{ .kind }}/{{ .name }} shares the host IPC namespace (hostIPC)"

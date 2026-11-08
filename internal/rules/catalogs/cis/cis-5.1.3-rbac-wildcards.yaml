@@ -1,0 +1,15 @@
+id: cis-5.1.3-rbac-wildcards
+description: "CIS 5.1.3: Minimize wildcard use in Roles and ClusterRoles"
+severity: warning
+on_eval_error: error
+match:
+  kinds:
+    - Role
+    - ClusterRole
+expression: |
+  !((has(resource.rules) && resource.rules != null) &&
+    resource.rules.exists(r, r != null &&
+      (((has(r.apiGroups) && r.apiGroups != null) && ["*"].exists(x, x in r.apiGroups)) ||
+        ((has(r.resources) && r.resources != null) && ["*"].exists(x, x in r.resources)) ||
+        ((has(r.verbs) && r.verbs != null) && ["*"].exists(x, x in r.verbs)))))
+message: "{{ .kind }}/{{ .name }} uses a wildcard in apiGroups, resources or verbs"
