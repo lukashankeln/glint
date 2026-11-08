@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.3.2](https://github.com/lukashankeln/glint/compare/v0.3.1...v0.3.2) (2026-11-08)
+
+
+### Features
+
+* **rules:** add CIS Kubernetes Benchmark v1.10 catalog rules ([139f3e0](https://github.com/lukashankeln/glint/commit/139f3e0324b705c90239f31e598c8b211de31cd9))
+* **rules:** add opt-in predefined rule catalogs ([1de6c0c](https://github.com/lukashankeln/glint/commit/1de6c0c986a2d8e787337c326f85e15d4f003a03))
+* **rules:** add podSpec and podContainers CEL helpers ([ae0d61c](https://github.com/lukashankeln/glint/commit/ae0d61c48e4a721200682b2b42b8561b238d34ee))
+
+
+### Bug Fixes
+
+* **rules:** catch container seccomp overrides and wildcard subresources in CIS rules ([cba31c5](https://github.com/lukashankeln/glint/commit/cba31c59ddd5c063cc2fa7c996cfdd69a21262cc))
+* **rules:** clarify CIS 5.7.2 message and pin seccomp fallback fixtures ([9a65040](https://github.com/lukashankeln/glint/commit/9a6504054392afd82136b68a285b421517699ff5))
+* **rules:** let excluded catalog rules be replaced and tighten tests ([1dfb0da](https://github.com/lukashankeln/glint/commit/1dfb0daa7de9a32fdbac551ea5add28469d3b167))
+* **rules:** list top-level built-ins before category rules ([e6043ae](https://github.com/lukashankeln/glint/commit/e6043aede6d98bdc56c971319a567a3e9a8a9fc8))
+
+
+### Performance
+
+* replace yaml.marshal and recude memory footprint ([e81374b](https://github.com/lukashankeln/glint/commit/e81374b5936f36fa5d8056de6d03e05436d88bb5))
+
 ## [0.3.1](https://github.com/lukashankeln/glint/compare/v0.3.0...v0.3.1) (2026-11-06)
 
 
