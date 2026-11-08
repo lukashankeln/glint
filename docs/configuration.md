@@ -240,7 +240,7 @@ rules:
       severity: info
 ```
 
-Precedence: `rules.built_in.<rule-id>` > `rules.catalogs.<category>` > the rule's own default. Per-rule entries accept `enabled` and `severity` only (no `params`). An invalid `severity` is rejected when the config is loaded. An unknown category name, an unknown `rules.built_in` key, a hyphenated alias of `no_latest_tag`, `resource_requests` or `deprecated_apis`, or two keys for the same rule are rejected when the rule engine starts (`glint lint`, `glint rules list`); `glint render` and `glint discover` do not check them. `exclude_rules` no longer exists; use `enabled: false` (a leftover `exclude_rules` is silently ignored). See [`docs/rule-catalogs.md`](rule-catalogs.md) for the rule list, replacing a rule and limitations.
+Precedence: `rules.built_in.<rule-id>` > `rules.catalogs.<category>` > the rule's own default. Per-rule entries for category rules accept `enabled` and `severity` only (no `params`; `params` remains available for `no_latest_tag`, `resource_requests` and `deprecated_apis`). An invalid `severity` is rejected when the config is loaded. An unknown category name, an unknown `rules.built_in` key, a hyphenated alias of `no_latest_tag`, `resource_requests` or `deprecated_apis`, or two keys for the same rule are rejected when the rule engine starts (`glint lint`, `glint rules list`); `glint render` and `glint discover` do not check them. `exclude_rules` no longer exists; use `enabled: false` (a leftover `exclude_rules` is silently ignored). See [`docs/rule-catalogs.md`](rule-catalogs.md) for the rule list, replacing a rule and limitations.
 
 ### Exceptions
 
