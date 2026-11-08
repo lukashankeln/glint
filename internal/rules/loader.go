@@ -20,9 +20,6 @@ import (
 //go:embed builtin
 var embeddedRules embed.FS
 
-//go:embed catalogs
-var embeddedCatalogs embed.FS
-
 // ruleFileDoc is the top-level structure for external rule YAML files.
 type ruleFileDoc struct {
 	Rules []ruleYAML `yaml:"rules"`
@@ -47,11 +44,18 @@ type matchFilterYAML struct {
 	Labels            map[string]string `yaml:"labels"`
 }
 
-// LoadBuiltIns reads the embedded rule YAML files and applies config overrides.
-// Disabled rules are included with Enabled=false so they appear in `glint rules list`.
-func LoadBuiltIns(cfg config.RulesConfig) ([]RuleDef, error) {
-	var rules []RuleDef
+// builtInEntry is one embedded rule file with the category derived from its path.
+type builtInEntry struct {
+	def      RuleDef
+	category string // "" for top-level files directly under builtin/
+}
 
+// readEmbeddedBuiltIns reads every embedded built-in rule in WalkDir (lexical)
+// order without applying any config. A file in builtin/<category>/ has that
+// category; files directly in builtin/ have none. Category rules are validated
+// strictly (non-empty id, valid severity); top-level files without an id are skipped.
+func readEmbeddedBuiltIns() ([]builtInEntry, error) {
+	var entries []builtInEntry
 	err := fs.WalkDir(embeddedRules, "builtin", func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".yaml") {
 			return err
@@ -66,21 +70,175 @@ func LoadBuiltIns(cfg config.RulesConfig) ([]RuleDef, error) {
 		if err := yaml.Unmarshal(data, &ry); err != nil {
 			return fmt.Errorf("parsing embedded rule %q: %w", path, err)
 		}
-		if ry.ID == "" {
+
+		category := ""
+		if rel := strings.TrimPrefix(path, "builtin/"); strings.Contains(rel, "/") {
+			category = strings.SplitN(rel, "/", 2)[0]
+		}
+
+		if category != "" {
+			if ry.ID == "" {
+				return fmt.Errorf("embedded rule %q: empty id", path)
+			}
+			if ry.Severity != "" && !config.ValidSeverity(ry.Severity) {
+				return fmt.Errorf("embedded rule %q: unknown severity %q (must be error, warning, or info)", path, ry.Severity)
+			}
+		} else if ry.ID == "" {
 			return nil
 		}
 
-		def := ruleYAMLToDef(ry, "built-in")
-		def.Enabled = true // default enabled; overridden below
+		source := "built-in"
+		if category != "" {
+			source = "built-in:" + category
+		}
+		entries = append(entries, builtInEntry{def: ruleYAMLToDef(ry, source), category: category})
+		return nil
+	})
+	return entries, err
+}
 
-		// Apply config overrides for built-in rules.
-		def = applyBuiltInOverride(def, cfg)
+// normalizeRuleKey makes "-" and "_" interchangeable when matching rule IDs
+// against rules.built_in keys.
+func normalizeRuleKey(s string) string {
+	return strings.ReplaceAll(s, "-", "_")
+}
 
-		// Apply param substitution. Rules with a substitutor always use the
-		// generated expression regardless of whether the user set params.
-		if sub, ok := builtins.ParamSubstitutors[def.ID]; ok {
-			if expr := sub(builtInParams(def.ID, cfg)); expr != "" {
-				def.Expression = expr
+// namedBuiltInKeys are the built-in rules that have dedicated fields in
+// config.BuiltInRulesConfig, keyed by normalised rule ID.
+var namedBuiltInKeys = map[string]bool{
+	"no_latest_tag":     true,
+	"resource_requests": true,
+	"deprecated_apis":   true,
+}
+
+// validateBuiltInConfig checks rules.catalogs names and the inline
+// rules.built_in overrides against the embedded rules. Maps are walked in
+// sorted order so errors are deterministic.
+func validateBuiltInConfig(cfg config.RulesConfig, entries []builtInEntry) error {
+	var categories []string
+	catRules := map[string]bool{} // normalised category rule ID
+	for _, e := range entries {
+		if e.category == "" {
+			continue
+		}
+		if !slices.Contains(categories, e.category) {
+			categories = append(categories, e.category)
+		}
+		catRules[normalizeRuleKey(e.def.ID)] = true
+	}
+	sort.Strings(categories)
+
+	catNames := make([]string, 0, len(cfg.Catalogs))
+	for n := range cfg.Catalogs {
+		catNames = append(catNames, n)
+	}
+	sort.Strings(catNames)
+	for _, n := range catNames {
+		if !slices.Contains(categories, n) {
+			return fmt.Errorf("rules.catalogs: unknown catalog %q (available: %s)", n, strings.Join(categories, ", "))
+		}
+	}
+
+	keys := make([]string, 0, len(cfg.BuiltIn.Rules))
+	for k := range cfg.BuiltIn.Rules {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	seen := map[string]string{}
+	for _, k := range keys {
+		nk := normalizeRuleKey(k)
+		switch {
+		case namedBuiltInKeys[nk]:
+			return fmt.Errorf("rules.built_in.%s: use rules.built_in.%s", k, nk)
+		case !catRules[nk]:
+			return fmt.Errorf("rules.built_in.%s: unknown built-in rule", k)
+		}
+		if prev, ok := seen[nk]; ok {
+			return fmt.Errorf("rules.built_in.%s: duplicate of rules.built_in.%s (same rule)", k, prev)
+		}
+		seen[nk] = k
+	}
+	return nil
+}
+
+// applyCategoryOverride resolves enabled state and severity of a category
+// rule: per-rule override, then category shorthand, then the file severity.
+func applyCategoryOverride(def RuleDef, category string, cfg config.RulesConfig) RuleDef {
+	cc := cfg.Catalogs[category]
+	def.Enabled = cc.Enabled
+	if cc.Severity != "" {
+		def.Severity = Severity(strings.ToLower(cc.Severity))
+	}
+	nid := normalizeRuleKey(def.ID)
+	for k, o := range cfg.BuiltIn.Rules { // keys are validated unique after normalisation
+		if normalizeRuleKey(k) != nid {
+			continue
+		}
+		if o.Enabled != nil {
+			def.Enabled = *o.Enabled
+		}
+		if o.Severity != "" {
+			def.Severity = Severity(strings.ToLower(o.Severity))
+		}
+	}
+	return def
+}
+
+// BuiltInCategoryRuleIDs returns the rule IDs of one built-in category
+// (e.g. "cis") in load order, or an error for an unknown category.
+func BuiltInCategoryRuleIDs(category string) ([]string, error) {
+	entries, err := readEmbeddedBuiltIns()
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	var categories []string
+	for _, e := range entries {
+		if e.category == "" {
+			continue
+		}
+		if !slices.Contains(categories, e.category) {
+			categories = append(categories, e.category)
+		}
+		if e.category == category {
+			ids = append(ids, e.def.ID)
+		}
+	}
+	if !slices.Contains(categories, category) {
+		sort.Strings(categories)
+		return nil, fmt.Errorf("rules.catalogs: unknown catalog %q (available: %s)", category, strings.Join(categories, ", "))
+	}
+	return ids, nil
+}
+
+// LoadBuiltIns reads the embedded rule YAML files and applies config overrides.
+// Disabled rules are included with Enabled=false so they appear in `glint rules list`.
+// Category rules (builtin/<category>/) are disabled unless enabled through
+// rules.catalogs.<category> or a per-rule rules.built_in.<rule-id> entry.
+func LoadBuiltIns(cfg config.RulesConfig) ([]RuleDef, error) {
+	entries, err := readEmbeddedBuiltIns()
+	if err != nil {
+		return nil, err
+	}
+	if err := validateBuiltInConfig(cfg, entries); err != nil {
+		return nil, err
+	}
+
+	var rules []RuleDef
+	for _, e := range entries {
+		def := e.def
+		if e.category != "" {
+			def = applyCategoryOverride(def, e.category, cfg)
+		} else {
+			def.Enabled = true // default enabled; overridden below
+			def = applyBuiltInOverride(def, cfg)
+
+			// Apply param substitution. Rules with a substitutor always use the
+			// generated expression regardless of whether the user set params.
+			if sub, ok := builtins.ParamSubstitutors[def.ID]; ok {
+				if expr := sub(builtInParams(def.ID, cfg)); expr != "" {
+					def.Expression = expr
+				}
 			}
 		}
 
@@ -88,9 +246,8 @@ func LoadBuiltIns(cfg config.RulesConfig) ([]RuleDef, error) {
 		def.Expression = preprocessExpression(def.Expression)
 
 		rules = append(rules, def)
-		return nil
-	})
-	return rules, err
+	}
+	return rules, nil
 }
 
 // LoadRuleFiles reads external rule YAML files matched by glob patterns.
@@ -285,128 +442,4 @@ func preprocessExpression(expr string) string {
 	expr = reHasLabel.ReplaceAllString(expr, `($1 in labels && labels[$1] != "")`)
 	expr = reHasAnnotation.ReplaceAllString(expr, `($1 in annotations && annotations[$1] != "")`)
 	return strings.TrimSpace(expr)
-}
-
-// catalogNames returns the embedded catalog names (subdirectories of catalogs/), sorted.
-func catalogNames() ([]string, error) {
-	entries, err := fs.ReadDir(embeddedCatalogs, "catalogs")
-	if err != nil {
-		return nil, fmt.Errorf("reading embedded catalogs: %w", err)
-	}
-	var names []string
-	for _, e := range entries {
-		if e.IsDir() {
-			names = append(names, e.Name())
-		}
-	}
-	sort.Strings(names)
-	return names, nil
-}
-
-// loadCatalogFile reads every rule of one embedded catalog in sorted file order,
-// without applying any config. Rules are Enabled with their file severity.
-func loadCatalogFile(name string) ([]RuleDef, error) {
-	dir := "catalogs/" + name
-	entries, err := fs.ReadDir(embeddedCatalogs, dir)
-	if err != nil {
-		return nil, fmt.Errorf("reading embedded catalog %q: %w", name, err)
-	}
-	var defs []RuleDef
-	for _, e := range entries { // ReadDir returns entries sorted by filename
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
-			continue
-		}
-		path := dir + "/" + e.Name()
-		data, err := embeddedCatalogs.ReadFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("reading embedded rule %q: %w", path, err)
-		}
-		var ry ruleYAML
-		if err := yaml.Unmarshal(data, &ry); err != nil {
-			return nil, fmt.Errorf("parsing embedded rule %q: %w", path, err)
-		}
-		if ry.ID == "" {
-			return nil, fmt.Errorf("embedded rule %q: empty id", path)
-		}
-		if ry.Severity != "" && !config.ValidSeverity(ry.Severity) {
-			return nil, fmt.Errorf("embedded rule %q: unknown severity %q (must be error, warning, or info)", path, ry.Severity)
-		}
-		def := ruleYAMLToDef(ry, "catalog:"+name)
-		def.Enabled = true
-		def.Expression = preprocessExpression(def.Expression)
-		defs = append(defs, def)
-	}
-	return defs, nil
-}
-
-// CatalogRuleIDs returns the rule IDs of the named embedded catalog in load order.
-func CatalogRuleIDs(name string) ([]string, error) {
-	names, err := catalogNames()
-	if err != nil {
-		return nil, err
-	}
-	if !slices.Contains(names, name) {
-		return nil, fmt.Errorf("rules.catalogs: unknown catalog %q (available: %s)", name, strings.Join(names, ", "))
-	}
-	defs, err := loadCatalogFile(name)
-	if err != nil {
-		return nil, err
-	}
-	ids := make([]string, len(defs))
-	for i, d := range defs {
-		ids[i] = d.ID
-	}
-	return ids, nil
-}
-
-// LoadCatalogs loads the rules of every enabled catalog in cfg.Catalogs.
-// Excluded rules are kept with Enabled=false so `glint rules list` shows them.
-func LoadCatalogs(cfg config.RulesConfig) ([]RuleDef, error) {
-	cfgNames := make([]string, 0, len(cfg.Catalogs))
-	for n := range cfg.Catalogs {
-		cfgNames = append(cfgNames, n)
-	}
-	sort.Strings(cfgNames)
-
-	var out []RuleDef
-	for _, name := range cfgNames {
-		cc := cfg.Catalogs[name]
-		defs, err := loadCatalogOne(name, cc)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, defs...)
-	}
-	return out, nil
-}
-
-func loadCatalogOne(name string, cc config.CatalogConfig) ([]RuleDef, error) {
-	ids, err := CatalogRuleIDs(name) // also rejects unknown catalog names
-	if err != nil {
-		return nil, err
-	}
-	for _, ex := range cc.ExcludeRules {
-		if !slices.Contains(ids, ex) {
-			return nil, fmt.Errorf("rules.catalogs.%s.exclude_rules: unknown rule %q", name, ex)
-		}
-	}
-	if cc.Severity != "" && !config.ValidSeverity(cc.Severity) {
-		return nil, fmt.Errorf("rules.catalogs.%s: unknown severity %q (must be error, warning, or info)", name, cc.Severity)
-	}
-	if !cc.Enabled {
-		return nil, nil
-	}
-	defs, err := loadCatalogFile(name)
-	if err != nil {
-		return nil, err
-	}
-	for i := range defs {
-		if cc.Severity != "" {
-			defs[i].Severity = Severity(strings.ToLower(cc.Severity))
-		}
-		if slices.Contains(cc.ExcludeRules, defs[i].ID) {
-			defs[i].Enabled = false
-		}
-	}
-	return defs, nil
 }
