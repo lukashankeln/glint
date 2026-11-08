@@ -29,16 +29,16 @@ rules:
 | `severity` | string | — | `error`, `warning` or `info` (case-insensitive). Replaces the default severity of every rule in the catalog; empty keeps each rule's own severity |
 | `exclude_rules` | []string | — | IDs of catalog rules to disable |
 
-Catalog rules are reported like any other rule, with the rule ID in brackets, and count towards `fail_on`. Because the CIS rules default to `warning`, `error` and `info`, the default `fail_on: [error]` only fails on the error-severity ones; use `severity` or `fail_on` to tighten or loosen that.
+Catalog rules are reported like any other rule, with the rule ID in brackets, and count towards `fail_on`. CIS rules have mixed default severities (`error`, `warning`, `info`); with the default `fail_on: [error]` only the error-severity ones (5.1.7, 5.2.2, 5.2.3, 5.2.4, 5.2.5, 5.2.11, 5.2.12) fail the run. Use `severity` or `fail_on` to tighten or loosen that.
 
-Validation happens when the config is loaded:
+Validation happens in two places:
 
-- An unknown catalog name is an error that lists the available catalogs.
-- An unknown ID in `exclude_rules` is an error. It is checked even when `enabled: false`.
-- An invalid `severity` is rejected.
+- An unknown catalog name is an error that lists the available catalogs. It is rejected when the rule engine starts (`glint lint`, `glint rules list`); `glint render` and `glint discover` do not check it.
+- An unknown ID in `exclude_rules` is an error, rejected at the same point. It is checked even when `enabled: false`.
+- An invalid `severity` is rejected when the config is loaded.
 - A disabled catalog loads nothing, and its rules do not appear in `glint rules list`.
 
-> `glint.yaml` is parsed without strict key checking, so a misspelt key (for example `catalog:` instead of `catalogs:`) or `exclude_rules` placed directly under `rules` is silently ignored and no catalog rule runs. Check with `glint rules list` that the rules you expect are present.
+> `glint.yaml` is parsed without strict key checking, so a misspelt key is silently ignored. A misspelt `catalogs:` (for example `catalog:`) means no catalog rule runs. A misplaced `exclude_rules` (for example directly under `rules`) or a misspelt one (for example `exclude_rule:`) is ignored too, so the rules you meant to exclude still run. Check with `glint rules list` that the rules you expect are present and that excluded ones show `ENABLED` `no`.
 
 ---
 
@@ -71,7 +71,7 @@ An **enabled** catalog rule whose ID equals that of a built-in, inline custom or
 ## Interaction with other features
 
 - **Exceptions** are keyed by rule ID, so `rules.exceptions` works with catalog rules like any other (`rule: cis-5.2.2-privileged-containers`). With the catalog disabled, an exception that names a `cis-*` rule logs `exception references unknown rule ID`.
-- **`--only-rules` / `--skip-rules`** filter by rule ID, for example `glint lint --skip-rules cis-5.7.3-security-context`. `--only-rules` restricts the run to the listed IDs, including catalog ones.
+- **`--only-rules` / `--skip-rules`** filter by rule ID, for example `glint lint --skip-rules cis-5.7.3-security-context`. `--only-rules` restricts the reported findings to the listed IDs, including catalog ones. Both filter the findings after all rules have been evaluated; they do not change which rules run.
 - **`glint rules list`** shows catalog rules with the source `catalog:cis`.
 - **Evaluation errors** from a catalog rule are reported at `error` severity regardless of the rule's own severity (see [`on_eval_error`](writing-rules.md#evaluation-errors-and-on_eval_error)). The catalog rules are written to avoid them; one that still occurs is a rule bug worth reporting.
 
@@ -160,8 +160,8 @@ These controls are not implemented, because they cannot be decided from a single
 
 ### Limitations
 
-- **RBAC rules ignore `apiGroups`.** 5.1.2, 5.1.4, 5.1.9 to 5.1.13 match on `resources` and `verbs` only. A rule for `secrets` in an unrelated API group is reported too, so they can over-report but not under-report.
-- **5.7.4 only catches an explicit `namespace: default`.** A manifest without `metadata.namespace` is not flagged, because glint cannot know the namespace it will be applied to (for example through `kubectl -n` or an ArgoCD destination namespace).
-- **Evaluation errors are reported at `error` severity** regardless of the rule's own severity, as for any rule.
-- **Null entries in container lists are handled inconsistently.** `podContainers` returns list elements as-is, so a `null` entry in `containers` is not skipped; depending on the rule it can produce an evaluation error or be treated as a container without settings. The API server rejects such manifests anyway.
+- **RBAC rules ignore `apiGroups`.** 5.1.2, 5.1.4, 5.1.9 to 5.1.13 match on `resources` and `verbs` only, and 5.1.8 checks `verbs` only (ignoring `resources` too). Only 5.1.3 reads `apiGroups`. A rule for `secrets` in an unrelated API group is reported too, so they can over-report but not under-report.
+- **5.7.4 only catches an explicit `namespace: default`.** A manifest without `metadata.namespace` is not flagged, because glint cannot know the namespace it will be applied to (for example through `kubectl -n` or an ArgoCD destination namespace). When glint renders a Helm chart and the app has no destination namespace, the release namespace defaults to `default`, so charts that template `.Release.Namespace` are flagged; set the destination namespace or exclude the rule.
+- **Evaluation errors are reported at `error` severity** regardless of the rule's own severity, because every catalog rule sets `on_eval_error: error` (a rule with `on_eval_error: warning` logs and skips instead).
+- **Null entries in container lists are handled inconsistently.** `podContainers` returns list elements as-is, so a `null` entry in `containers` is not skipped; in testing no catalog rule raised an evaluation error on it: some rules pass it, others flag it as a container without settings. The API server rejects such manifests anyway.
 - **glint checks manifests, not live cluster state.** The catalog does not replace [kube-bench](https://github.com/aquasecurity/kube-bench) and complements it: kube-bench audits nodes and the control plane, glint audits what you are about to deploy.

@@ -238,7 +238,7 @@ rules:
         - cis-5.7.3-security-context
 ```
 
-Catalogs are disabled unless `enabled: true`. An unknown catalog name, an unknown `exclude_rules` ID (even with `enabled: false`) or an invalid `severity` is rejected when the config is loaded. See [`docs/rule-catalogs.md`](rule-catalogs.md) for the rule list, replacing a rule and limitations.
+Catalogs are disabled unless `enabled: true`. An invalid `severity` is rejected when the config is loaded. An unknown catalog name or an unknown `exclude_rules` ID (even with `enabled: false`) is rejected when the rule engine starts (`glint lint`, `glint rules list`); `glint render` and `glint discover` do not check them. See [`docs/rule-catalogs.md`](rule-catalogs.md) for the rule list, replacing a rule and limitations.
 
 ### Exceptions
 

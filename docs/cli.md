@@ -27,6 +27,10 @@ glint init [path]
   --framework string     argocd | flux | plain (default: auto-detect)
 ```
 
+`glint rules list` prints one row per rule. SOURCE can be `catalog:<name>` for [catalog rules](rule-catalogs.md); catalog rules named in `exclude_rules` show `ENABLED` `no`, and rules of a disabled catalog are not listed.
+
+`--only-rules` and `--skip-rules` filter the reported findings after all rules are evaluated; they do not change which rules run.
+
 **Exit codes:** `0` = clean, `1` = violations found, `2` = pipeline error
 
 An app that fails to render is a `glint/render-error` violation in `glint lint`, and `glint render` exits `2` if any app fails. With `--output`, an app whose file cannot be fully written also makes `glint render` exit `2`, and a partially written regular file is removed.
