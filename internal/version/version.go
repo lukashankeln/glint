@@ -2,7 +2,7 @@ package version
 
 // These variables are injected at build time via -ldflags.
 var (
-	Version = "0.3.2" // x-release-please-version
+	Version = "0.3.3" // x-release-please-version
 	Commit  = "none"
 	Date    = "unknown"
 )

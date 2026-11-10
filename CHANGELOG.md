@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/lukashankeln/glint/compare/v0.3.2...v0.3.3) (2026-11-10)
+
+
+### Bug Fixes
+
+* **cel:** expose resource namespace as `ns`; `namespace` is reserved in CEL ([19ce81d](https://github.com/lukashankeln/glint/commit/19ce81ddd368d23e176643e23964f7065c39a973))
+
 ## [0.3.2](https://github.com/lukashankeln/glint/compare/v0.3.1...v0.3.2) (2026-11-08)
 
 This release adds glint's first built-in rule catalog: the CIS Kubernetes Benchmark v1.10 (section 5, Policies), shipped as 29 opt-in rules that use the same schema and CEL engine as your own custom rules. It also reduces memory used when splitting large rendered manifests.
