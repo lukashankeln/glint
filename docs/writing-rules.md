@@ -233,13 +233,13 @@ Every expression has access to these variables:
 |----------|------|-------------|
 | `resource` | `map` | Full manifest (Kubernetes Unstructured) |
 | `name` | `string` | `metadata.name` |
-| `namespace` | `string` | `metadata.namespace` (empty for cluster-scoped resources and for namespaced manifests without an explicit `metadata.namespace`; glint does not default it). **Not usable in expressions:** `namespace` is a reserved word in CEL, so any expression that references it fails with `reserved identifier: namespace`. Use `match.namespaces` / `exclude_namespaces`, or read `resource.metadata.namespace` behind a `has(resource.metadata.namespace)` guard |
+| `ns` | `string` | `metadata.namespace` (empty for cluster-scoped resources and for namespaced manifests without an explicit `metadata.namespace`; glint does not default it). Named `ns` because `namespace` is a reserved word in CEL |
 | `kind` | `string` | e.g. `"Deployment"` |
 | `apiVersion` | `string` | e.g. `"apps/v1"` |
 | `labels` | `map<string,string>` | `metadata.labels` |
 | `annotations` | `map<string,string>` | `metadata.annotations` |
 
-Because `namespace` is not defaulted, `match.namespaces` / `exclude_namespaces` filters also see that empty value. `labels` and `annotations` are always maps, empty when the manifest has none. Non-string label or annotation values are left out.
+Because the namespace is not defaulted, `ns` is `""` for such manifests and `match.namespaces` / `exclude_namespaces` filters also see that empty value. Unlike `resource.metadata.namespace`, `ns` never raises an evaluation error when the key is missing. `labels` and `annotations` are always maps, empty when the manifest has none. Non-string label or annotation values are left out.
 
 ### `hasLabel` and `hasAnnotation`
 

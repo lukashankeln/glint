@@ -30,7 +30,7 @@ func ManifestToVars(m manifest.Manifest) map[string]any {
 	return map[string]any{
 		"resource":    m.Object,
 		"name":        m.Name,
-		"namespace":   m.Namespace,
+		"ns":          m.Namespace,
 		"labels":      labels,
 		"annotations": annotations,
 		"kind":        m.Kind,
