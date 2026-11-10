@@ -230,7 +230,7 @@ func TestSplitYAML_ResolverErrorIsReturned(t *testing.T) {
 }
 
 func TestDecodeUTF16_MatchesStdlib(t *testing.T) {
-	units := append(utf16.Encode([]rune("a: é 日本 😀\n x")), 0xD800, 'b', 0xDC00)
+	units := append(utf16.Encode([]rune("a: é 日本 😀\n\u2028x")), 0xD800, 'b', 0xDC00)
 	want := string(utf16.Decode(units))
 	for _, bigEndian := range []bool{false, true} {
 		b := make([]byte, 2*len(units))
