@@ -440,6 +440,29 @@ func onEvalErrorCfg(mode string) config.RulesConfig {
 	}
 }
 
+func TestEngine_NsVariable(t *testing.T) {
+	engine, err := NewEngine(config.RulesConfig{
+		Custom: []config.CustomRuleDef{
+			{
+				ID:         "no-default-ns",
+				Severity:   "error",
+				Expression: `ns != "default"`,
+				Message:    "{{ .kind }}/{{ .name }} in {{ .namespace }}",
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	violations := engine.Evaluate([]manifest.Manifest{
+		makeManifest("v1", "ConfigMap", "a", "default", nil),
+		makeManifest("v1", "ConfigMap", "b", "prod", nil),
+		makeManifest("v1", "ConfigMap", "c", "", nil),
+	})
+	require.Len(t, violations, 1)
+	assert.Equal(t, "no-default-ns", violations[0].RuleID)
+	assert.Equal(t, "ConfigMap/a in default", violations[0].Message)
+}
+
 func TestEngine_OnEvalError_Warning_Skips(t *testing.T) {
 	engine, err := NewEngine(onEvalErrorCfg("warning"))
 	require.NoError(t, err)

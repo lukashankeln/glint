@@ -13,7 +13,9 @@ func NewEnv() (*cel.Env, error) {
 		// Variable declarations
 		cel.Variable("resource", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("name", cel.StringType),
-		cel.Variable("namespace", cel.StringType),
+		// metadata.namespace is exposed as "ns": "namespace" is a reserved word
+		// in CEL and cannot be referenced in an expression.
+		cel.Variable("ns", cel.StringType),
 		cel.Variable("labels", cel.MapType(cel.StringType, cel.StringType)),
 		cel.Variable("annotations", cel.MapType(cel.StringType, cel.StringType)),
 		cel.Variable("kind", cel.StringType),

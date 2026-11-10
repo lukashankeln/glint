@@ -112,7 +112,7 @@ func baseVars() map[string]any {
 	return map[string]any{
 		"resource":    map[string]any{},
 		"name":        "",
-		"namespace":   "",
+		"ns":          "",
 		"labels":      map[string]string{},
 		"annotations": map[string]string{},
 		"kind":        "",
